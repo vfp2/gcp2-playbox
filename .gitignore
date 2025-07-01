@@ -162,3 +162,4 @@ cython_debug/
 #.idea/
 
 .DS_Store
+bigquery_service_account.json
