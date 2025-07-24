@@ -1,1 +1,9 @@
+Notes:
 https://docs.google.com/spreadsheets/d/1zHjAPp8f_GY7kKWuBgzdWe9wcEk23e5ixJq-d0QC4-M/edit?usp=sharing
+
+Dataset files:
+gcp2.net_netvar_2-15-24_7-15-24.csv (4.2gb):
+https://drive.google.com/file/d/1L5SZqsWhH0a4dYC0u-1z856c09-T4qE6/view?usp=sharing
+
+gcp2.net_netvar_2-15-24_7-15-24_epoc_netvar_count_xor_alt_cols.csv (975mb):
+https://drive.google.com/file/d/15M2YMWn5zJVfpqjKnKynTICD0EpjuBb-/view?usp=sharing
