@@ -163,3 +163,4 @@ cython_debug/
 
 .DS_Store
 bigquery_service_account.json
+bq_cache
