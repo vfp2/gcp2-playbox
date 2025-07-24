@@ -1,0 +1,9 @@
+dash
+plotly
+google-cloud-bigquery
+google-cloud-bigquery-storage
+pandas
+numpy
+duckdb
+diskcache
+python-dotenv
