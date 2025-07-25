@@ -128,6 +128,7 @@ def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
 
 # ───────────────────────────── Dash layout ─────────────────────────────────
 app = dash.Dash(__name__)
+app.title = "GCP EGG Cumulative χ² Explorer"
 
 app.layout = html.Div([
     html.H3("GCP EGG Cumulative χ² Explorer"),
