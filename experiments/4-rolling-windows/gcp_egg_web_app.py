@@ -25,7 +25,6 @@ from google.cloud.bigquery_storage_v1 import BigQueryReadClient
 GCP_PROJECT  = os.getenv("GCP_PROJECT", "gcpingcp")
 GCP_DATASET  = os.getenv("GCP_DATASET", "eggs_us")
 GCP_TABLE    = os.getenv("GCP_TABLE", "basket")          # raw second-level table
-BASELINE_TBL = os.getenv("BASELINE_TABLE", "baseline_day")
 
 START_MIN_TS = _dt(2001, 3, 3, tzinfo=_tz.utc).timestamp()
 START_MAX_TS = _dt(2001, 5, 3, 23, 59, 59, tzinfo=_tz.utc).timestamp()
