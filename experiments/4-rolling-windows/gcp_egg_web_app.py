@@ -137,9 +137,6 @@ def render_sql(start_ts: float, window_s: int, bins: int) -> str:
 
 # ───────────────────────────── query helper ────────────────────────────────
 CACHE = dc.Cache("./bq_cache", size_limit=2 * 1024**3)
-# Track which parameter combinations have already been printed this runtime
-_PRINTED_KEYS = set()
-
 def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
     key = (start_ts, window_s, bins)
     # fetch or compute dataframe
@@ -161,12 +158,10 @@ def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
         df["cum_chi2"] = df["chi2_bin"].cumsum()
         CACHE.set(key, df, expire=3600)
 
-    # print SQL and result once per parameter combination
-    if key not in _PRINTED_KEYS:
-        print("\n===== BigQuery SQL =====\n" + render_sql(start_ts, window_s, bins) + "\n========================")
-        print(df.head(10).to_string(index=False))
-        print("========================\n")
-        _PRINTED_KEYS.add(key)
+    # Always print SQL and result for debugging and verification
+    print("\n===== BigQuery SQL =====\n" + render_sql(start_ts, window_s, bins) + "\n========================")
+    print(df.head(10).to_string(index=False))
+    print("========================\n")
 
     return df
 
