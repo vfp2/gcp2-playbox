@@ -141,28 +141,32 @@ _PRINTED_KEYS = set()
 
 def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
     key = (start_ts, window_s, bins)
-    if key not in _PRINTED_KEYS:
-        print("\n===== BigQuery SQL =====\n" + render_sql(start_ts, window_s, bins) + "\n========================\n")
-        _PRINTED_KEYS.add(key)
-    # cached dataframe logic uses the same key
-    if (df := CACHE.get(key)) is not None:
-        return df
+    # fetch or compute dataframe
+    df = CACHE.get(key)
+    if df is None:
+        cfg = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("start_ts", "TIMESTAMP",
+                                              _dt.fromtimestamp(start_ts, _tz.utc)),
+                bigquery.ScalarQueryParameter("window_s", "INT64", window_s),
+                bigquery.ScalarQueryParameter("bins",     "INT64", bins)
+            ]
+        )
+        sql = build_sql()
+        df = (
+            bq_client.query(sql, job_config=cfg)
+            .to_dataframe(bqstorage_client=bqs_client, create_bqstorage_client=True)
+        )
+        df["cum_chi2"] = df["chi2_bin"].cumsum()
+        CACHE.set(key, df, expire=3600)
 
-    cfg = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("start_ts", "TIMESTAMP",
-                                          _dt.fromtimestamp(start_ts, _tz.utc)),
-            bigquery.ScalarQueryParameter("window_s", "INT64", window_s),
-            bigquery.ScalarQueryParameter("bins",     "INT64", bins)
-        ]
-    )
-    sql = build_sql()
-    df = (
-        bq_client.query(sql, job_config=cfg)
-        .to_dataframe(bqstorage_client=bqs_client, create_bqstorage_client=True)
-    )
-    df["cum_chi2"] = df["chi2_bin"].cumsum()
-    CACHE.set(key, df, expire=3600)
+    # print SQL and result once per parameter combination
+    if key not in _PRINTED_KEYS:
+        print("\n===== BigQuery SQL =====\n" + render_sql(start_ts, window_s, bins) + "\n========================")
+        print(df.head(10).to_string(index=False))
+        print("========================\n")
+        _PRINTED_KEYS.add(key)
+
     return df
 
 # ───────────────────────────── Dash layout ─────────────────────────────────
