@@ -28,11 +28,13 @@ GCP_TABLE    = os.getenv("GCP_TABLE", "basket")          # raw second-level tabl
 BASELINE_TBL = os.getenv("BASELINE_TABLE", "baseline_day")
 
 START_MIN_TS = _dt(2001, 3, 3, tzinfo=_tz.utc).timestamp()
-START_MAX_TS = _dt(2002, 3, 25, 23, 59, 59, tzinfo=_tz.utc).timestamp()
+START_MAX_TS = _dt(2001, 5, 3, 23, 59, 59, tzinfo=_tz.utc).timestamp()
 LEN_MIN_S, LEN_MAX_S = 60, 30 * 24 * 3600                # 1 min – 30 days
 BINS_MIN, BINS_MAX   = 1, 2000
 
 CACHE = dc.Cache("./bq_cache", size_limit=2 * 1024**3)
+# Track which parameter combinations have already been printed this runtime
+_PRINTED_KEYS = set()
 
 bq_client  = bigquery.Client(project=GCP_PROJECT)
 bqs_client = BigQueryReadClient()
@@ -102,11 +104,47 @@ SELECT bin_idx, chi2_bin
 FROM bins
 ORDER BY bin_idx;"""
 
+def render_sql(start_ts: float, window_s: int, bins: int) -> str:
+    """Return a BigQuery query with ALL parameters inlined as literals.
+
+    The DECLARE block is removed and any references to its variables are
+    substituted so the output can be copy-pasted directly into the BigQuery
+    console with no additional parameter binding.  (Requested by user.)
+
+    Scott Wilber emphasises that explicit literals avoid confusion when
+    verifying results by hand.
+    """
+    import re
+
+    sql = build_sql()
+
+    # We'll inline only the parameter placeholders (marked with '@').
+    # This avoids touching identifiers like the CTE name `bins`.
+
+    ts_literal = _dt.fromtimestamp(start_ts, _tz.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    sql = sql.replace("@start_ts", f"TIMESTAMP '{ts_literal}'")
+    sql = sql.replace("@window_s", str(window_s))
+    sql = sql.replace("@bins", str(bins))
+
+    # Replace the computed sec_per_bin expression directly in the DECLARE block
+    sec_per_bin = 1 if bins >= window_s else window_s // bins
+    sql = re.sub(r"DECLARE sec_per_bin INT64 DEFAULT\s+[^;]+;",
+                 f"DECLARE sec_per_bin INT64 DEFAULT {sec_per_bin};",
+                 sql)
+
+    return sql
+
 # ───────────────────────────── query helper ────────────────────────────────
 CACHE = dc.Cache("./bq_cache", size_limit=2 * 1024**3)
+# Track which parameter combinations have already been printed this runtime
+_PRINTED_KEYS = set()
 
 def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
     key = (start_ts, window_s, bins)
+    if key not in _PRINTED_KEYS:
+        print("\n===== BigQuery SQL =====\n" + render_sql(start_ts, window_s, bins) + "\n========================\n")
+        _PRINTED_KEYS.add(key)
+    # cached dataframe logic uses the same key
     if (df := CACHE.get(key)) is not None:
         return df
 
@@ -118,8 +156,9 @@ def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
             bigquery.ScalarQueryParameter("bins",     "INT64", bins)
         ]
     )
+    sql = build_sql()
     df = (
-        bq_client.query(build_sql(), job_config=cfg)
+        bq_client.query(sql, job_config=cfg)
         .to_dataframe(bqstorage_client=bqs_client, create_bqstorage_client=True)
     )
     df["cum_chi2"] = df["chi2_bin"].cumsum()
