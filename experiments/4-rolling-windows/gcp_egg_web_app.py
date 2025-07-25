@@ -27,19 +27,10 @@ GCP_DATASET  = os.getenv("GCP_DATASET", "eggs_us")
 GCP_TABLE    = os.getenv("GCP_TABLE", "basket")          # raw second-level table
 BASELINE_TBL = os.getenv("BASELINE_TABLE", "baseline_day")
 
-START_MIN_TS = _dt(1998, 10, 1, tzinfo=_tz.utc).timestamp()
-START_MAX_TS = _dt(2012, 3, 31, 23, 59, 59, tzinfo=_tz.utc).timestamp()
+START_MIN_TS = _dt(2001, 3, 3, tzinfo=_tz.utc).timestamp()
+START_MAX_TS = _dt(2001, 5, 3, 23, 59, 59, tzinfo=_tz.utc).timestamp()
 LEN_MIN_S, LEN_MAX_S = 60, 30 * 24 * 3600                # 1 min – 30 days
 BINS_MIN, BINS_MAX   = 1, 2000
-
-# Default parameters from the GCP 9/11 study (per Nelson, 2001-09-11 event)
-DEFAULT_START_TS = _dt(2001, 9, 11, 12, 35, 0, tzinfo=_tz.utc).timestamp()  # 08:35 EDT
-DEFAULT_WINDOW_S = 4 * 3600   # 4-hour window
-DEFAULT_BINS     = 240        # 1-minute bins
-
-# ───────────── default date/time strings for inputs ─────────────
-DEFAULT_START_DATE = _dt.fromtimestamp(DEFAULT_START_TS, _tz.utc).date()
-DEFAULT_TIME_STR   = _dt.fromtimestamp(DEFAULT_START_TS, _tz.utc).strftime("%H:%M")
 
 CACHE = dc.Cache("./bq_cache", size_limit=2 * 1024**3)
 # Track which parameter combinations have already been printed this runtime
@@ -188,29 +179,25 @@ app.layout = html.Div([
     dcc.Graph(id="chi2-graph", style={"height": "70vh"}),
 
     html.Label("Window start (UTC)"),
-    html.Div([
-        dcc.DatePickerSingle(
-            id="start-date",
-            min_date_allowed=_dt.fromtimestamp(START_MIN_TS, _tz.utc).date(),
-            max_date_allowed=_dt.fromtimestamp(START_MAX_TS, _tz.utc).date(),
-            date=DEFAULT_START_DATE
-        ),
-        dcc.Input(id="start-time", type="text", value=DEFAULT_TIME_STR, placeholder="HH:MM", style={"width":"6rem", "fontSize":"1rem"})
-    ], style={"display":"flex", "gap":"0.5rem", "marginBottom":"0.5rem"}),
+    dcc.Slider(
+        id="start", min=START_MIN_TS, max=START_MAX_TS, step=3600,
+        value=START_MIN_TS, updatemode="mouseup",
+        tooltip={"placement": "bottom"}
+    ),
     html.Div(id="start-readout", style={"marginBottom": "1rem"}),
 
     html.Label("Window length (s)"),
     dcc.Slider(
-        id="len", min=LEN_MIN_S, max=LEN_MAX_S, step=60, value=DEFAULT_WINDOW_S,
+        id="len", min=LEN_MIN_S, max=LEN_MAX_S, step=60, value=6*3600,
         marks={60:"1m",3600:"1h",86400:"1d",2592000:"30d"},
         updatemode="mouseup", tooltip={"placement": "bottom"}
     ),
     html.Div(id="len-readout", style={"marginBottom": "1rem"}),
 
     html.Label("Bin count"),
-    dcc.Input(
-        id="bins", type="number", min=BINS_MIN, max=BINS_MAX, step=1,
-        value=DEFAULT_BINS, style={"width":"7rem", "fontSize":"1rem"}
+    dcc.Slider(
+        id="bins", min=BINS_MIN, max=BINS_MAX, step=10, value=72,
+        updatemode="mouseup", tooltip={"placement": "bottom"}
     ),
     html.Div(id="bins-readout"),
 ])
@@ -221,21 +208,11 @@ app.layout = html.Div([
     Output("start-readout", "children"),
     Output("len-readout", "children"),
     Output("bins-readout", "children"),
-    Input("start-date", "date"), Input("start-time", "value"),
-    Input("len", "value"), Input("bins", "value")
+    Input("start", "value"), Input("len", "value"), Input("bins", "value")
 )
-def update_graph(start_date, start_time, window_len, bins):
+def update_graph(start_ts, window_len, bins):
     window_len = max(int(window_len or 1), 1)
     bins       = max(int(bins or 1), 1)
-
-    # Parse date & time into timestamp
-    try:
-        dt_str = f"{start_date} {start_time or '00:00'}"
-        dt = _dt.strptime(dt_str, "%Y-%m-%d %H:%M").replace(tzinfo=_tz.utc)
-    except Exception:
-        dt = _dt.fromtimestamp(DEFAULT_START_TS, _tz.utc)
-
-    start_ts = dt.timestamp()
 
     df = query_bq(start_ts, window_len, bins)
     if df.empty:
