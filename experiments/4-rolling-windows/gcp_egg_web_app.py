@@ -62,12 +62,13 @@ EGG_COLS = [
 
 # ───────────────────────────── SQL builder ────────────────────────────────
 def build_sql() -> str:
-    ascii_block = ",\n".join(f"    ASCII({c}) AS {c}" for c in EGG_COLS)
+    ascii_block = ",\n".join(f"    ASCII({c}) AS {c}" for c in EGG_COLS)  # still used in raw CTE, keeps query readable
+    # Use SAFE_DIVIDE to avoid division-by-zero; COALESCE in chi² sum to treat NULL as 0
     z_block     = ",\n".join(
-        f"    ({c} - b.mu_{c.split('_')[1]}) / b.sigma_{c.split('_')[1]} AS z_{c}"
+        f"    SAFE_DIVIDE(({c} - COALESCE(b.mu_{c.split('_')[1]}, 100)), COALESCE(b.sigma_{c.split('_')[1]}, 1)) AS z_{c}"
         for c in EGG_COLS
     )
-    chi2_sum = " + ".join(f"POW(z_{c},2)" for c in EGG_COLS)
+    chi2_sum = " + ".join(f"COALESCE(POW(z_{c},2),0)" for c in EGG_COLS)
 
     return f"""
 DECLARE start_ts TIMESTAMP DEFAULT @start_ts;
