@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug GCP Egg App",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/experiments/4-rolling-windows/gcp_egg_web_app.py",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "python": "${workspaceFolder}/experiments/4-rolling-windows/venv/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ]
+} 
