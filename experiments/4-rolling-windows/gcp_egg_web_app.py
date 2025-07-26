@@ -28,7 +28,9 @@ GCP_TABLE    = os.getenv("GCP_TABLE", "basket")          # raw second-level tabl
 BASELINE_TBL = os.getenv("BASELINE_TABLE", "baseline_individual")
 
 START_MIN_TS = _dt(2001, 3, 3, tzinfo=_tz.utc).timestamp()
-START_MAX_TS = _dt(2001, 5, 3, 23, 59, 59, tzinfo=_tz.utc).timestamp()
+START_MAX_TS = _dt(2001, 12, 31, 23, 59, 59, tzinfo=_tz.utc).timestamp()
+# Default to start of 911 Nelson experiment (first plane hit WTC at 8:46 AM EDT = 12:46 PM UTC)
+DEFAULT_START_TS = _dt(2001, 9, 11, 12, 46, 0, tzinfo=_tz.utc).timestamp()
 LEN_MIN_S, LEN_MAX_S = 60, 30 * 24 * 3600                # 1 min – 30 days
 BINS_MIN, BINS_MAX   = 1, 2000
 
@@ -176,7 +178,7 @@ app.layout = html.Div([
     html.Label("Window start (UTC)"),
     dcc.Slider(
         id="start", min=START_MIN_TS, max=START_MAX_TS, step=3600,
-        value=START_MIN_TS, updatemode="mouseup",
+        value=DEFAULT_START_TS, updatemode="mouseup",
         tooltip={"placement": "bottom"}
     ),
     html.Div(id="start-readout", style={"marginBottom": "1rem"}),
