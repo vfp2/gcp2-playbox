@@ -27,10 +27,12 @@ GCP_DATASET  = os.getenv("GCP_DATASET", "eggs_us")
 GCP_TABLE    = os.getenv("GCP_TABLE", "basket")          # raw second-level table
 BASELINE_TBL = os.getenv("BASELINE_TABLE", "baseline_individual")
 
-START_MIN_TS = _dt(2001, 3, 3, tzinfo=_tz.utc).timestamp()
-START_MAX_TS = _dt(2001, 12, 31, 23, 59, 59, tzinfo=_tz.utc).timestamp()
+# Date range for sliders (3rd Aug 1998 to 25 Aug 2023)
+DATE_MIN = _dt(1998, 8, 3, tzinfo=_tz.utc).date()
+DATE_MAX = _dt(2023, 8, 25, tzinfo=_tz.utc).date()
 # Default to start of 911 Nelson experiment (first plane hit WTC at 8:46 AM EDT = 12:46 PM UTC)
-DEFAULT_START_TS = _dt(2001, 9, 11, 12, 46, 0, tzinfo=_tz.utc).timestamp()
+DEFAULT_DATE = _dt(2001, 9, 11, tzinfo=_tz.utc).date()
+DEFAULT_TIME = _dt(2001, 9, 11, 12, 46, 0, tzinfo=_tz.utc).time()
 LEN_MIN_S, LEN_MAX_S = 60, 30 * 24 * 3600                # 1 min – 30 days
 BINS_MIN, BINS_MAX   = 1, 2000
 
@@ -175,13 +177,29 @@ app.layout = html.Div([
     html.H3("GCP EGG Cumulative χ² Explorer"),
     dcc.Graph(id="chi2-graph", style={"height": "70vh"}),
 
-    html.Label("Window start (UTC)"),
+    html.Label("Window start date (UTC)"),
     dcc.Slider(
-        id="start", min=START_MIN_TS, max=START_MAX_TS, step=3600,
-        value=DEFAULT_START_TS, updatemode="mouseup",
+        id="start-date", 
+        min=0, 
+        max=(DATE_MAX - DATE_MIN).days, 
+        step=1,
+        value=(DEFAULT_DATE - DATE_MIN).days, 
+        updatemode="mouseup",
         tooltip={"placement": "bottom"}
     ),
-    html.Div(id="start-readout", style={"marginBottom": "1rem"}),
+    html.Div(id="start-date-readout", style={"marginBottom": "0.5rem"}),
+    
+    html.Label("Window start time (UTC)"),
+    dcc.Slider(
+        id="start-time", 
+        min=0, 
+        max=86399,  # 23:59:59 in seconds
+        step=60,  # 1 minute steps
+        value=DEFAULT_TIME.hour * 3600 + DEFAULT_TIME.minute * 60 + DEFAULT_TIME.second,
+        updatemode="mouseup",
+        tooltip={"placement": "bottom"}
+    ),
+    html.Div(id="start-time-readout", style={"marginBottom": "1rem"}),
 
     html.Label("Window length (s)"),
     dcc.Slider(
@@ -202,14 +220,25 @@ app.layout = html.Div([
 # ───────────────────────────── callback ────────────────────────────────────
 @app.callback(
     Output("chi2-graph", "figure"),
-    Output("start-readout", "children"),
+    Output("start-date-readout", "children"),
+    Output("start-time-readout", "children"),
     Output("len-readout", "children"),
     Output("bins-readout", "children"),
-    Input("start", "value"), Input("len", "value"), Input("bins", "value")
+    Input("start-date", "value"), Input("start-time", "value"), Input("len", "value"), Input("bins", "value")
 )
-def update_graph(start_ts, window_len, bins):
+def update_graph(start_date_days, start_time_seconds, window_len, bins):
     window_len = max(int(window_len or 1), 1)
     bins       = max(int(bins or 1), 1)
+    
+    # Convert date and time inputs to timestamp
+    selected_date = DATE_MIN + _td(days=int(start_date_days or 0))
+    hours = int(start_time_seconds or 0) // 3600
+    minutes = (int(start_time_seconds or 0) % 3600) // 60
+    seconds = int(start_time_seconds or 0) % 60
+    selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}:{seconds:02d}", "%H:%M:%S").time()
+    
+    # Combine date and time into datetime
+    start_ts = _dt.combine(selected_date, selected_time, tzinfo=_tz.utc).timestamp()
 
     df = query_bq(start_ts, window_len, bins)
     if df.empty:
@@ -229,10 +258,11 @@ def update_graph(start_ts, window_len, bins):
         margin=dict(l=40, r=20, t=40, b=40)
     )
 
-    start_str = f"Start: {_dt.fromtimestamp(start_ts, _tz.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
+    start_date_str = f"Date: {selected_date.strftime('%Y-%m-%d')}"
+    start_time_str = f"Time: {selected_time.strftime('%H:%M:%S')}"
     len_str   = f"Length: {_td(seconds=window_len)} ({window_len:,} s)"
     bins_str  = f"Bins: {bins} (≈ {window_len/bins:.1f} s/bin)"
-    return fig, start_str, len_str, bins_str
+    return fig, start_date_str, start_time_str, len_str, bins_str
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8050)
