@@ -250,7 +250,16 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins):
         )
         return fig, "No data", "", ""
 
+    # Debug: Print DataFrame contents
+    print("DEBUG: DataFrame contents:")
+    print(df.to_string(index=False))
+    print(f"DEBUG: DataFrame shape: {df.shape}")
+    print(f"DEBUG: cum_chi2 values: {df['cum_chi2'].tolist()}")
+
     x = df["bin_idx"] * (window_len / bins) / 60  # minutes
+    print(f"DEBUG: x values: {x.tolist()}")
+    print(f"DEBUG: y values: {df['cum_chi2'].tolist()}")
+    
     fig = go.Figure(go.Scatter(x=x, y=df["cum_chi2"], mode="lines"))
     fig.update_layout(
         xaxis_title="Minutes from window start",
