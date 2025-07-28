@@ -1,8 +1,13 @@
 """
 Dash web application to explore Global Consciousness Project (GCP) EGG data
-stored in BigQuery and reproduce Nelson-style cumulative χ² plots.
+stored in BigQuery and reproduce Nelson-style statistical analysis.
 
 * Full egg list (128 columns)
+* Implements both published GCP methods:
+  - Stouffer Z (mean shift detection): Z_s = ΣZ_i/√N (dynamic N based on active eggs)
+  - Chi-square (variance analysis): χ² = ΣZ_i² (excludes NULL eggs)
+* Uses published expected values: μ=100, σ=7.0712
+* Handles missing egg data by dynamically adjusting N in Stouffer Z calculation
 * Guards against division-by-zero and empty windows
 * Live slider read-outs
 * Sliders fire the callback only on mouse-up
@@ -67,11 +72,22 @@ EGG_COLS = [
 # ───────────────────────────── SQL builder ────────────────────────────────
 def build_sql() -> str:
     ascii_block = ",\n".join(f"    ASCII({c}) AS {c}" for c in EGG_COLS)  # still used in raw CTE, keeps query readable
-    # Use SAFE_DIVIDE to avoid division-by-zero; COALESCE in chi² sum to treat NULL as 0
-    z_block     = ",\n".join(
-        f"    SAFE_DIVIDE(({c} - COALESCE(b.mu_{c.split('_')[1]}, 100)), COALESCE(b.sigma_{c.split('_')[1]}, 1)) AS z_{c}"
+    
+    # Use published expected values: μ=100, σ=7.0712
+    # Keep ASCII conversion as requested
+    z_block = ",\n".join(
+        f"    SAFE_DIVIDE(({c} - 100), 7.0712) AS z_{c}"
         for c in EGG_COLS
     )
+    
+    # Count non-null eggs for dynamic N calculation
+    null_count_block = " + ".join(f"IF(z_{c} IS NULL, 0, 1)" for c in EGG_COLS)
+    
+    # Calculate Stouffer Z with dynamic N (only count non-null eggs)
+    stouffer_z = " + ".join(f"COALESCE(z_{c}, 0)" for c in EGG_COLS)
+    stouffer_z = f"SAFE_DIVIDE({stouffer_z}, SQRT({null_count_block})) AS stouffer_z"
+    
+    # Calculate sum of squared Z-scores for variance analysis (exclude NULLs)
     chi2_sum = " + ".join(f"COALESCE(POW(z_{c},2),0)" for c in EGG_COLS)
 
     return f"""
@@ -91,21 +107,26 @@ WITH raw AS (
 z AS (
   SELECT recorded_at,
 {z_block}
-  FROM raw r
-  JOIN `{GCP_PROJECT}.{GCP_DATASET}.{BASELINE_TBL}` b
-    ON b.day = DATE(r.recorded_at)
+  FROM raw
 ),
 sec AS (
-  SELECT recorded_at, {chi2_sum} AS chi2_sec FROM z
+  SELECT recorded_at, 
+         {chi2_sum} AS chi2_sec,
+         {stouffer_z},
+         {null_count_block} AS active_eggs
+  FROM z
 ),
 bins AS (
   SELECT
     CAST(FLOOR(TIMESTAMP_DIFF(recorded_at, start_ts, SECOND)/sec_per_bin) AS INT64) AS bin_idx,
-    SUM(chi2_sec) AS chi2_bin
+    SUM(chi2_sec) AS chi2_bin,
+    SUM(stouffer_z) AS stouffer_z_sum,
+    COUNT(*) AS seconds_in_bin,
+    AVG(active_eggs) AS avg_active_eggs
   FROM sec
   GROUP BY bin_idx
 )
-SELECT bin_idx, chi2_bin
+SELECT bin_idx, chi2_bin, stouffer_z_sum, seconds_in_bin, avg_active_eggs
 FROM bins
 ORDER BY bin_idx;"""
 
@@ -160,6 +181,7 @@ def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
             .to_dataframe(bqstorage_client=bqs_client, create_bqstorage_client=True)
         )
         df["cum_chi2"] = df["chi2_bin"].cumsum()
+        df["cum_stouffer_z"] = df["stouffer_z_sum"].cumsum()
         CACHE.set(key, df, expire=3600)
 
     # Always print SQL and result for debugging and verification
@@ -171,10 +193,14 @@ def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
 
 # ───────────────────────────── Dash layout ─────────────────────────────────
 app = dash.Dash(__name__)
-app.title = "GCP EGG Cumulative χ² Explorer"
+app.title = "GCP EGG Statistical Analysis Explorer"
 
 app.layout = html.Div([
-    html.H3("GCP EGG Cumulative χ² Explorer"),
+    html.H3("GCP EGG Statistical Analysis Explorer"),
+    html.P([
+        "Red line: Cumulative χ² (variance analysis) | ",
+        "Blue line: Cumulative Stouffer Z (mean shift analysis)"
+    ], style={"fontSize": "14px", "color": "gray", "marginBottom": "10px"}),
     dcc.Graph(id="chi2-graph", style={"height": "70vh"}),
 
     html.Label("Window start date (UTC)"),
@@ -259,18 +285,44 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins):
     x = df["bin_idx"] * (window_len / bins) / 60  # minutes
     print(f"DEBUG: x values: {x.tolist()}")
     print(f"DEBUG: y values: {df['cum_chi2'].tolist()}")
+    print(f"DEBUG: Stouffer Z values: {df['cum_stouffer_z'].tolist()}")
+    print(f"DEBUG: Average active eggs: {df['avg_active_eggs'].tolist()}")
     
-    fig = go.Figure(go.Scatter(x=x, y=df["cum_chi2"], mode="lines"))
+    # Create dual-axis plot with both chi-square and Stouffer Z
+    fig = go.Figure()
+    
+    # Add chi-square trace (left y-axis)
+    fig.add_trace(go.Scatter(
+        x=x, 
+        y=df["cum_chi2"], 
+        mode="lines",
+        name="Cumulative χ²",
+        line=dict(color="red"),
+        yaxis="y"
+    ))
+    
+    # Add Stouffer Z trace (right y-axis)
+    fig.add_trace(go.Scatter(
+        x=x, 
+        y=df["cum_stouffer_z"], 
+        mode="lines",
+        name="Cumulative Stouffer Z",
+        line=dict(color="blue"),
+        yaxis="y2"
+    ))
+    
     fig.update_layout(
         xaxis_title="Minutes from window start",
-        yaxis_title="Cumulative χ²",
-        margin=dict(l=40, r=20, t=40, b=40)
+        yaxis=dict(title="Cumulative χ²", side="left", color="red"),
+        yaxis2=dict(title="Cumulative Stouffer Z", side="right", color="blue", overlaying="y"),
+        margin=dict(l=40, r=40, t=40, b=40),
+        legend=dict(x=0.02, y=0.98)
     )
 
     start_date_str = f"Date: {selected_date.strftime('%Y-%m-%d')}"
     start_time_str = f"Time: {selected_time.strftime('%H:%M:%S')}"
     len_str   = f"Length: {_td(seconds=window_len)} ({window_len:,} s)"
-    bins_str  = f"Bins: {bins} (≈ {window_len/bins:.1f} s/bin)"
+    bins_str  = f"Bins: {bins} (≈ {window_len/bins:.1f} s/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/128"
     return fig, start_date_str, start_time_str, len_str, bins_str
 
 if __name__ == "__main__":
