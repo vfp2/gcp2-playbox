@@ -205,8 +205,8 @@ app.title = "GCP EGG Statistical Analysis Explorer"
 app.layout = html.Div([
     html.H3("GCP EGG Statistical Analysis Explorer"),
     html.P([
-        "Red line: Cumulative χ² (variance analysis) | ",
-        "Blue line: Cumulative Stouffer Z (mean shift analysis)"
+        "Orange line: Cumulative χ² (variance analysis) | ",
+        "Purple line: Cumulative Stouffer Z (mean shift analysis)"
     ], style={"fontSize": "14px", "color": "gray", "marginBottom": "10px"}),
     
     # Loading wrapper around the graph
@@ -610,7 +610,7 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
         y=df["cum_chi2"], 
         mode="lines",
         name="Cumulative χ²",
-        line=dict(color="red"),
+        line=dict(color="orange"),
         yaxis="y"
     ))
     
@@ -620,15 +620,15 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
         y=df["cum_stouffer_z"], 
         mode="lines",
         name="Cumulative Stouffer Z",
-        line=dict(color="blue"),
+        line=dict(color="purple"),
         yaxis="y2"
     ))
     
     
     fig.update_layout(
         xaxis_title="Minutes from window start",
-        yaxis=dict(title="Cumulative χ²", side="left", color="red"),
-        yaxis2=dict(title="Cumulative Stouffer Z", side="right", color="blue", overlaying="y"),
+        yaxis=dict(title="Cumulative χ²", side="left", color="orange"),
+        yaxis2=dict(title="Cumulative Stouffer Z", side="right", color="purple", overlaying="y"),
         margin=dict(l=40, r=40, t=60, b=40),
         legend=dict(x=0.02, y=0.98)
     )
