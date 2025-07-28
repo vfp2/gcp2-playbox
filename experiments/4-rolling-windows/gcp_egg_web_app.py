@@ -2,7 +2,7 @@
 Dash web application to explore Global Consciousness Project (GCP) EGG data
 stored in BigQuery and reproduce Nelson-style statistical analysis.
 
-* Full egg list (128 columns)
+* Full egg list ({len(EGG_COLS)} columns)
 * Implements both published GCP methods:
   - Stouffer Z (mean shift detection): Z_s = ΣZ_i/√N (dynamic N based on active eggs)
   - Chi-square (variance analysis): χ² = ΣZ_i² (excludes NULL eggs)
@@ -75,20 +75,27 @@ def build_sql() -> str:
     
     # Use published expected values: μ=100, σ=7.0712
     # Keep ASCII conversion as requested
-    z_block = ",\n".join(
-        f"    SAFE_DIVIDE(({c} - 100), 7.0712) AS z_{c}"
-        for c in EGG_COLS
-    )
+    # Only calculate Z-scores for eggs with non-NULL data
+    z_block_terms = []
+    for c in EGG_COLS:
+        z_block_terms.append(f"    IF({c} IS NOT NULL, SAFE_DIVIDE(({c} - 100), 7.0712), NULL) AS z_{c}")
+    z_block = ",\n".join(z_block_terms)
     
     # Count non-null eggs for dynamic N calculation
     null_count_block = " + ".join(f"IF(z_{c} IS NULL, 0, 1)" for c in EGG_COLS)
     
-    # Calculate Stouffer Z with dynamic N (only count non-null eggs)
-    stouffer_z = " + ".join(f"COALESCE(z_{c}, 0)" for c in EGG_COLS)
+    # Calculate Stouffer Z with dynamic N (only include non-null eggs)
+    stouffer_z_terms = []
+    for c in EGG_COLS:
+        stouffer_z_terms.append(f"IF(z_{c} IS NOT NULL, z_{c}, 0)")
+    stouffer_z = " + ".join(stouffer_z_terms)
     stouffer_z = f"SAFE_DIVIDE({stouffer_z}, SQRT({null_count_block})) AS stouffer_z"
     
-    # Calculate sum of squared Z-scores for variance analysis (exclude NULLs)
-    chi2_sum = " + ".join(f"COALESCE(POW(z_{c},2),0)" for c in EGG_COLS)
+    # Calculate sum of squared Z-scores for variance analysis (only include non-null eggs)
+    chi2_terms = []
+    for c in EGG_COLS:
+        chi2_terms.append(f"IF(z_{c} IS NOT NULL, POW(z_{c},2), 0)")
+    chi2_sum = " + ".join(chi2_terms)
 
     return f"""
 DECLARE start_ts TIMESTAMP DEFAULT @start_ts;
@@ -322,7 +329,7 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins):
     start_date_str = f"Date: {selected_date.strftime('%Y-%m-%d')}"
     start_time_str = f"Time: {selected_time.strftime('%H:%M:%S')}"
     len_str   = f"Length: {_td(seconds=window_len)} ({window_len:,} s)"
-    bins_str  = f"Bins: {bins} (≈ {window_len/bins:.1f} s/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/128"
+    bins_str  = f"Bins: {bins} (≈ {window_len/bins:.1f} s/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS)}"
     return fig, start_date_str, start_time_str, len_str, bins_str
 
 if __name__ == "__main__":
