@@ -430,6 +430,10 @@ app.layout = html.Div([
     Output("time-input", "value"),
     Output("window-length-input", "value"),
     Output("bin-count-input", "value"),
+    Output("start-date", "value"),
+    Output("start-time", "value"),
+    Output("len", "value"),
+    Output("bins", "value"),
     Input("start-date", "value"), Input("start-time", "value"), Input("len", "value"), Input("bins", "value"),
     Input("date-picker", "date"), Input("time-input", "value"), Input("window-length-input", "value"), Input("bin-count-input", "value")
 )
@@ -443,54 +447,58 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     # Determine which input triggered the callback and use that value
     triggered_id = ctx.triggered_id if ctx.triggered else None
     
-    # Handle date input
+    # Initialize values with defaults
+    start_date_days = int(start_date_days or 0)
+    start_time_seconds = int(start_time_seconds or 0)
+    window_len = max(int(window_len or 6*3600), LEN_MIN_S)
+    bins = max(int(bins or 72), BINS_MIN)
+    
+    # Handle date synchronization
     if triggered_id == "date-picker" and date_picker:
+        # Date picker was changed - update slider
         selected_date = _dt.strptime(date_picker, "%Y-%m-%d").date()
         start_date_days = (selected_date - DATE_MIN).days
     else:
-        selected_date = DATE_MIN + _td(days=int(start_date_days or 0))
+        # Use slider value or default
+        selected_date = DATE_MIN + _td(days=start_date_days)
     
-    # Handle time input
+    # Handle time synchronization
     if triggered_id == "time-input" and time_input:
+        # Time input was changed - validate and update slider
         try:
-            # Validate time format (HH:MM)
             if ":" in time_input and len(time_input.split(":")) == 2:
                 hours, minutes = map(int, time_input.split(":"))
                 if 0 <= hours <= 23 and 0 <= minutes <= 59:
                     selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}", "%H:%M").time()
                     start_time_seconds = hours * 3600 + minutes * 60
                 else:
-                    # Invalid time, use existing value
-                    hours = int(start_time_seconds or 0) // 3600
-                    minutes = (int(start_time_seconds or 0) % 3600) // 60
-                    selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}", "%H:%M").time()
+                    # Invalid time - keep current slider value
+                    selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
             else:
-                # Invalid format, use existing value
-                hours = int(start_time_seconds or 0) // 3600
-                minutes = (int(start_time_seconds or 0) % 3600) // 60
-                selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}", "%H:%M").time()
+                # Invalid format - keep current slider value
+                selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
         except (ValueError, TypeError):
-            # Invalid input, use existing value
-            hours = int(start_time_seconds or 0) // 3600
-            minutes = (int(start_time_seconds or 0) % 3600) // 60
-            selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}", "%H:%M").time()
+            # Invalid input - keep current slider value
+            selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
     else:
-        hours = int(start_time_seconds or 0) // 3600
-        minutes = (int(start_time_seconds or 0) % 3600) // 60
-        seconds = int(start_time_seconds or 0) % 60
-        selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}:{seconds:02d}", "%H:%M:%S").time()
+        # Use slider value
+        selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
     
-    # Handle window length input
+    # Handle window length synchronization
     if triggered_id == "window-length-input" and window_length_input is not None:
+        # Text input was changed - update slider
         window_len = max(int(window_length_input), LEN_MIN_S)
     else:
-        window_len = max(int(window_len or 1), 1)
+        # Use slider value
+        window_len = max(int(window_len), LEN_MIN_S)
     
-    # Handle bin count input
+    # Handle bin count synchronization
     if triggered_id == "bin-count-input" and bin_count_input is not None:
+        # Text input was changed - update slider
         bins = max(int(bin_count_input), BINS_MIN)
     else:
-        bins = max(int(bins or 1), 1)
+        # Use slider value
+        bins = max(int(bins), BINS_MIN)
     
     # Combine date and time into datetime
     start_ts = _dt.combine(selected_date, selected_time, tzinfo=_tz.utc).timestamp()
@@ -519,7 +527,8 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
         )
         status_str = f"⚠ No data found in {elapsed_time:.2f}s"
         return (fig, "No data", "", "", "", status_str,
-                selected_date, selected_time.strftime("%H:%M"), window_len, bins)
+                selected_date, selected_time.strftime("%H:%M"), window_len, bins,
+                start_date_days, start_time_seconds, window_len, bins)
 
     # Debug: Print DataFrame contents
     print("DEBUG: DataFrame contents:")
@@ -578,7 +587,8 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     
     # Return all outputs including the input components for synchronization
     return (fig, start_date_str, start_time_str, len_str, bins_str, status_str,
-            selected_date, selected_time.strftime("%H:%M"), window_len, bins)
+            selected_date, selected_time.strftime("%H:%M"), window_len, bins,
+            start_date_days, start_time_seconds, window_len, bins)
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8050)
