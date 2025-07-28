@@ -205,7 +205,7 @@ app.title = "GCP EGG Statistical Analysis Explorer"
 app.layout = html.Div([
     html.H3("GCP EGG Statistical Analysis Explorer"),
     html.P([
-        "Orange line: Cumulative χ² (variance analysis) | ",
+        "Orange line: χ² per bin (variance analysis) | ",
         "Purple line: Cumulative Stouffer Z (mean shift analysis)"
     ], style={"fontSize": "14px", "color": "gray", "marginBottom": "10px"}),
     
@@ -617,7 +617,7 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
         x = df["bin_idx"] * seconds_per_bin / 86400
     
     print(f"DEBUG: x values: {x.tolist()}")
-    print(f"DEBUG: y values: {df['cum_chi2'].tolist()}")
+    print(f"DEBUG: y values: {df['chi2_bin'].tolist()}")
     print(f"DEBUG: Stouffer Z values: {df['cum_stouffer_z'].tolist()}")
     print(f"DEBUG: Average active eggs: {df['avg_active_eggs'].tolist()}")
     print(f"DEBUG: Time unit: {time_unit}, conversion factor: {conversion_factor}")
@@ -625,17 +625,17 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     # Create dual-axis plot with both chi-square and Stouffer Z
     fig = go.Figure()
     
-    # Add chi-square trace (left y-axis)
+    # Add chi-square trace (left y-axis) - plot individual bin values, not cumulative
     fig.add_trace(go.Scatter(
         x=x, 
-        y=df["cum_chi2"], 
+        y=df["chi2_bin"], 
         mode="lines",
-        name="Cumulative χ²",
+        name="χ² per bin",
         line=dict(color="orange"),
         yaxis="y"
     ))
     
-    # Add Stouffer Z trace (right y-axis)
+    # Add Stouffer Z trace (right y-axis) - keep cumulative for mean shift detection
     fig.add_trace(go.Scatter(
         x=x, 
         y=df["cum_stouffer_z"], 
@@ -648,7 +648,7 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     
     fig.update_layout(
         xaxis_title=f"Time from window start ({time_unit})",
-        yaxis=dict(title="Cumulative χ²", side="left", color="orange"),
+        yaxis=dict(title="χ² per bin", side="left", color="orange"),
         yaxis2=dict(title="Cumulative Stouffer Z", side="right", color="purple", overlaying="y"),
         margin=dict(l=40, r=40, t=60, b=40),
         legend=dict(x=0.02, y=0.98)
