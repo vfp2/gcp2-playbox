@@ -223,6 +223,8 @@ app.layout = html.Div([
         dcc.DatePickerSingle(
             id="date-picker",
             date=DEFAULT_DATE,
+            min_date_allowed=DATE_MIN,
+            max_date_allowed=DATE_MAX,
             display_format="YYYY-MM-DD",
             style={"marginRight": "10px"}
         ),
@@ -273,10 +275,12 @@ app.layout = html.Div([
             id="time-input",
             type="text",
             value=DEFAULT_TIME.strftime("%H:%M"),
-            placeholder="HH:MM",
+            placeholder="HH:MM or H",
             style={"marginRight": "10px", "width": "100px"}
         ),
-        html.Span(" or use slider below", style={"fontSize": "12px", "color": "gray"})
+        html.Span(" or use slider below", style={"fontSize": "12px", "color": "gray"}),
+        html.Div("Format: HH:MM, HH:MM:SS, or just H (e.g., 14:30, 14:30:45, 14)", 
+                style={"fontSize": "11px", "color": "gray", "marginTop": "2px"})
     ], style={"marginBottom": "10px"}),
     dcc.Slider(
         id="start-time", 
@@ -344,14 +348,14 @@ app.layout = html.Div([
     html.Div([
         dcc.Input(
             id="window-length-input",
-            type="number",
+            type="text",
             value=6*3600,
-            min=LEN_MIN_S,
-            max=LEN_MAX_S,
-            step=60,
+            placeholder="seconds (60-2592000)",
             style={"marginRight": "10px", "width": "120px"}
         ),
-        html.Span(" seconds or use slider below", style={"fontSize": "12px", "color": "gray"})
+        html.Span(" seconds or use slider below", style={"fontSize": "12px", "color": "gray"}),
+        html.Div("Enter seconds (60 to 2,592,000)", 
+                style={"fontSize": "11px", "color": "gray", "marginTop": "2px"})
     ], style={"marginBottom": "10px"}),
     dcc.Slider(
         id="len", min=LEN_MIN_S, max=LEN_MAX_S, step=60, value=6*3600,
@@ -374,14 +378,14 @@ app.layout = html.Div([
     html.Div([
         dcc.Input(
             id="bin-count-input",
-            type="number",
+            type="text",
             value=72,
-            min=BINS_MIN,
-            max=BINS_MAX,
-            step=1,
+            placeholder="bins (1-2000)",
             style={"marginRight": "10px", "width": "80px"}
         ),
-        html.Span(" bins or use slider below", style={"fontSize": "12px", "color": "gray"})
+        html.Span(" bins or use slider below", style={"fontSize": "12px", "color": "gray"}),
+        html.Div("Enter number of bins (1 to 2,000)", 
+                style={"fontSize": "11px", "color": "gray", "marginTop": "2px"})
     ], style={"marginBottom": "10px"}),
     dcc.Slider(
         id="bins", min=BINS_MIN, max=BINS_MAX, step=1, value=72,
@@ -446,6 +450,8 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     
     # Determine which input triggered the callback and use that value
     triggered_id = ctx.triggered_id if ctx.triggered else None
+    print(f"DEBUG: Callback triggered by: {triggered_id}")
+    print(f"DEBUG: Input values - time: '{time_input}', window_len: '{window_length_input}', bins: '{bin_count_input}'")
     
     # Initialize values with defaults
     start_date_days = int(start_date_days or 0)
@@ -464,38 +470,91 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     
     # Handle time synchronization
     if triggered_id == "time-input" and time_input:
-        # Time input was changed - validate and update slider
+        # Time input was changed - try to parse and validate
+        time_input = time_input.strip()
+        print(f"DEBUG: Time input received: '{time_input}'")
         try:
-            if ":" in time_input and len(time_input.split(":")) == 2:
-                hours, minutes = map(int, time_input.split(":"))
-                if 0 <= hours <= 23 and 0 <= minutes <= 59:
+            if ":" in time_input:
+                parts = time_input.split(":")
+                if len(parts) == 2:
+                    hours, minutes = map(int, parts)
+                    # Allow reasonable time ranges, clamp to valid values
+                    hours = max(0, min(23, hours))
+                    minutes = max(0, min(59, minutes))
                     selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}", "%H:%M").time()
                     start_time_seconds = hours * 3600 + minutes * 60
+                    print(f"DEBUG: Parsed time as HH:MM - {hours:02d}:{minutes:02d}")
+                elif len(parts) == 3:
+                    hours, minutes, seconds = map(int, parts)
+                    hours = max(0, min(23, hours))
+                    minutes = max(0, min(59, minutes))
+                    seconds = max(0, min(59, seconds))
+                    selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}:{seconds:02d}", "%H:%M:%S").time()
+                    start_time_seconds = hours * 3600 + minutes * 60 + seconds
+                    print(f"DEBUG: Parsed time as HH:MM:SS - {hours:02d}:{minutes:02d}:{seconds:02d}")
                 else:
-                    # Invalid time - keep current slider value
+                    # Invalid format - use current slider value
                     selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
+                    print(f"DEBUG: Invalid time format, using slider value")
             else:
-                # Invalid format - keep current slider value
-                selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
-        except (ValueError, TypeError):
-            # Invalid input - keep current slider value
+                # Try to parse as just hours
+                hours = int(time_input)
+                hours = max(0, min(23, hours))
+                selected_time = _dt.strptime(f"{hours:02d}:00", "%H:%M").time()
+                start_time_seconds = hours * 3600
+                print(f"DEBUG: Parsed time as hours only - {hours:02d}:00")
+        except (ValueError, TypeError) as e:
+            # Invalid input - use current slider value
             selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
+            print(f"DEBUG: Time parsing error: {e}, using slider value")
     else:
         # Use slider value
         selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
     
     # Handle window length synchronization
     if triggered_id == "window-length-input" and window_length_input is not None:
-        # Text input was changed - update slider
-        window_len = max(int(window_length_input), LEN_MIN_S)
+        # Text input was changed - try to parse and validate
+        print(f"DEBUG: Window length input received: '{window_length_input}'")
+        try:
+            window_length_input = str(window_length_input).strip()
+            if window_length_input:
+                # Try to parse as integer
+                parsed_len = int(window_length_input)
+                # Clamp to valid range
+                window_len = max(LEN_MIN_S, min(LEN_MAX_S, parsed_len))
+                print(f"DEBUG: Parsed window length: {parsed_len} -> clamped to {window_len}")
+            else:
+                # Empty input - use current slider value
+                window_len = max(int(window_len), LEN_MIN_S)
+                print(f"DEBUG: Empty window length input, using slider value: {window_len}")
+        except (ValueError, TypeError) as e:
+            # Invalid input - use current slider value
+            window_len = max(int(window_len), LEN_MIN_S)
+            print(f"DEBUG: Window length parsing error: {e}, using slider value: {window_len}")
     else:
         # Use slider value
         window_len = max(int(window_len), LEN_MIN_S)
     
     # Handle bin count synchronization
     if triggered_id == "bin-count-input" and bin_count_input is not None:
-        # Text input was changed - update slider
-        bins = max(int(bin_count_input), BINS_MIN)
+        # Text input was changed - try to parse and validate
+        print(f"DEBUG: Bin count input received: '{bin_count_input}'")
+        try:
+            bin_count_input = str(bin_count_input).strip()
+            if bin_count_input:
+                # Try to parse as integer
+                parsed_bins = int(bin_count_input)
+                # Clamp to valid range
+                bins = max(BINS_MIN, min(BINS_MAX, parsed_bins))
+                print(f"DEBUG: Parsed bin count: {parsed_bins} -> clamped to {bins}")
+            else:
+                # Empty input - use current slider value
+                bins = max(int(bins), BINS_MIN)
+                print(f"DEBUG: Empty bin count input, using slider value: {bins}")
+        except (ValueError, TypeError) as e:
+            # Invalid input - use current slider value
+            bins = max(int(bins), BINS_MIN)
+            print(f"DEBUG: Bin count parsing error: {e}, using slider value: {bins}")
     else:
         # Use slider value
         bins = max(int(bins), BINS_MIN)
