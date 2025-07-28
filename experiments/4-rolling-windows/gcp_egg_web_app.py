@@ -208,7 +208,16 @@ app.layout = html.Div([
         "Red line: Cumulative χ² (variance analysis) | ",
         "Blue line: Cumulative Stouffer Z (mean shift analysis)"
     ], style={"fontSize": "14px", "color": "gray", "marginBottom": "10px"}),
-    dcc.Graph(id="chi2-graph", style={"height": "70vh"}),
+    
+    # Loading wrapper around the graph
+    dcc.Loading(
+        id="loading-graph",
+        type="circle",
+        children=[
+            dcc.Graph(id="chi2-graph", style={"height": "70vh"})
+        ],
+        style={"marginTop": "20px"}
+    ),
 
     html.Label("Window start date (UTC)"),
     dcc.Slider(
@@ -248,6 +257,9 @@ app.layout = html.Div([
         updatemode="mouseup", tooltip={"placement": "bottom"}
     ),
     html.Div(id="bins-readout"),
+    
+    # Status indicator
+    html.Div(id="status-indicator", style={"marginTop": "10px", "fontSize": "12px", "color": "gray"})
 ])
 
 # ───────────────────────────── callback ────────────────────────────────────
@@ -257,9 +269,13 @@ app.layout = html.Div([
     Output("start-time-readout", "children"),
     Output("len-readout", "children"),
     Output("bins-readout", "children"),
+    Output("status-indicator", "children"),
     Input("start-date", "value"), Input("start-time", "value"), Input("len", "value"), Input("bins", "value")
 )
 def update_graph(start_date_days, start_time_seconds, window_len, bins):
+    import time
+    start_time = time.time()
+    
     window_len = max(int(window_len or 1), 1)
     bins       = max(int(bins or 1), 1)
     
@@ -273,15 +289,30 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins):
     # Combine date and time into datetime
     start_ts = _dt.combine(selected_date, selected_time, tzinfo=_tz.utc).timestamp()
 
+    # Check if data is cached or needs to be fetched
+    cache_key = (start_ts, window_len, bins)
+    is_cached = CACHE.get(cache_key) is not None
+    
     df = query_bq(start_ts, window_len, bins)
+    
+    # Calculate timing (always do this)
+    elapsed_time = time.time() - start_time
+    
     if df.empty:
         fig = go.Figure()
         fig.update_layout(
+            title=dict(
+                text=f"GCP EGG Statistical Analysis<br><sub>No data found • {elapsed_time:.2f}s</sub>",
+                x=0.5,
+                xanchor="center"
+            ),
             xaxis_title="Minutes from window start",
             yaxis_title="Cumulative χ²",
-            annotations=[dict(text="No data in selected window", showarrow=False)]
+            annotations=[dict(text="No data in selected window", showarrow=False)],
+            margin=dict(l=40, r=40, t=60, b=40)
         )
-        return fig, "No data", "", ""
+        status_str = f"⚠ No data found in {elapsed_time:.2f}s"
+        return fig, "No data", "", "", "", status_str
 
     # Debug: Print DataFrame contents
     print("DEBUG: DataFrame contents:")
@@ -318,19 +349,34 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins):
         yaxis="y2"
     ))
     
+    # Add subtitle showing data source
+    subtitle = "Cached data" if is_cached else "Fresh BigQuery data"
+    
     fig.update_layout(
+        title=dict(
+            text=f"GCP EGG Statistical Analysis<br><sub>{subtitle} • {elapsed_time:.2f}s</sub>",
+            x=0.5,
+            xanchor="center"
+        ),
         xaxis_title="Minutes from window start",
         yaxis=dict(title="Cumulative χ²", side="left", color="red"),
         yaxis2=dict(title="Cumulative Stouffer Z", side="right", color="blue", overlaying="y"),
-        margin=dict(l=40, r=40, t=40, b=40),
+        margin=dict(l=40, r=40, t=60, b=40),
         legend=dict(x=0.02, y=0.98)
     )
-
+    
     start_date_str = f"Date: {selected_date.strftime('%Y-%m-%d')}"
     start_time_str = f"Time: {selected_time.strftime('%H:%M:%S')}"
     len_str   = f"Length: {_td(seconds=window_len)} ({window_len:,} s)"
     bins_str  = f"Bins: {bins} (≈ {window_len/bins:.1f} s/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS)}"
-    return fig, start_date_str, start_time_str, len_str, bins_str
+    
+    # Status indicator with more details
+    if is_cached:
+        status_str = f"✓ Cached data loaded in {elapsed_time:.2f}s"
+    else:
+        status_str = f"🔄 BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins}"
+    
+    return fig, start_date_str, start_time_str, len_str, bins_str, status_str
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8050)
