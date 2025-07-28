@@ -215,8 +215,7 @@ app.layout = html.Div([
         type="circle",
         children=[
             dcc.Graph(id="chi2-graph", style={"height": "70vh"})
-        ],
-        style={"marginTop": "20px"}
+        ]
     ),
 
     html.Label("Window start date (UTC)"),
@@ -226,6 +225,34 @@ app.layout = html.Div([
         max=(DATE_MAX - DATE_MIN).days, 
         step=1,
         value=(DEFAULT_DATE - DATE_MIN).days, 
+        marks={
+            0: "1998",
+            365: "1999",
+            365*2: "2000",
+            365*3: "2001",
+            365*4: "2002",
+            365*5: "2003",
+            365*6: "2004",
+            365*7: "2005",
+            365*8: "2006",
+            365*9: "2007",
+            365*10: "2008",
+            365*11: "2009",
+            365*12: "2010",
+            365*13: "2011",
+            365*14: "2012",
+            365*15: "2013",
+            365*16: "2014",
+            365*17: "2015",
+            365*18: "2016",
+            365*19: "2017",
+            365*20: "2018",
+            365*21: "2019",
+            365*22: "2020",
+            365*23: "2021",
+            365*24: "2022",
+            365*25: "2023"
+        },
         updatemode="mouseup",
         tooltip={"placement": "bottom"}
     ),
@@ -238,6 +265,57 @@ app.layout = html.Div([
         max=86399,  # 23:59:59 in seconds
         step=60,  # 1 minute steps
         value=DEFAULT_TIME.hour * 3600 + DEFAULT_TIME.minute * 60 + DEFAULT_TIME.second,
+        marks={
+            0: "00:00",
+            1800: "'",
+            3600: "01:00",
+            5400: "'",
+            7200: "02:00",
+            9000: "'",
+            10800: "03:00",
+            12600: "'",
+            14400: "04:00",
+            16200: "'",
+            18000: "05:00",
+            19800: "'",
+            21600: "06:00",
+            23400: "'",
+            25200: "07:00",
+            27000: "'",
+            28800: "08:00",
+            30600: "'",
+            32400: "09:00",
+            34200: "'",
+            36000: "10:00",
+            37800: "'",
+            39600: "11:00",
+            41400: "'",
+            43200: "12:00",
+            45000: "'",
+            46800: "13:00",
+            48600: "'",
+            50400: "14:00",
+            52200: "'",
+            54000: "15:00",
+            55800: "'",
+            57600: "16:00",
+            59400: "'",
+            61200: "17:00",
+            63000: "'",
+            64800: "18:00",
+            66600: "'",
+            68400: "19:00",
+            70200: "'",
+            72000: "20:00",
+            73800: "'",
+            75600: "21:00",
+            77400: "'",
+            79200: "22:00",
+            81000: "'",
+            82800: "23:00",
+            84600: "'",
+            86399: "23:59"
+        },
         updatemode="mouseup",
         tooltip={"placement": "bottom"}
     ),
@@ -246,7 +324,17 @@ app.layout = html.Div([
     html.Label("Window length (s)"),
     dcc.Slider(
         id="len", min=LEN_MIN_S, max=LEN_MAX_S, step=60, value=6*3600,
-        marks={60:"1m",3600:"1h",86400:"1d",2592000:"30d"},
+        marks={
+            60: "1m",
+            3600: "1h",
+            86400: "1d",
+            172800: "2d",
+            259200: "3d",
+            604800: "1w",
+            1209600: "2w",
+            1814400: "3w",
+            2592000: "30d"
+        },
         updatemode="mouseup", tooltip={"placement": "bottom"}
     ),
     html.Div(id="len-readout", style={"marginBottom": "1rem"}),
@@ -254,6 +342,31 @@ app.layout = html.Div([
     html.Label("Bin count"),
     dcc.Slider(
         id="bins", min=BINS_MIN, max=BINS_MAX, step=10, value=72,
+        marks={
+            1: "1",
+            10: "10",
+            50: "50",
+            100: "100",
+            200: "200",
+            300: "300",
+            400: "400",
+            500: "500",
+            600: "600",
+            700: "700",
+            800: "800",
+            900: "900",
+            1000: "1K",
+            1100: "1.1K",
+            1200: "1.2K",
+            1300: "1.3K",
+            1400: "1.4K",
+            1500: "1.5K",
+            1600: "1.6K",
+            1700: "1.7K",
+            1800: "1.8K",
+            1900: "1.9K",
+            2000: "2K"
+        },
         updatemode="mouseup", tooltip={"placement": "bottom"}
     ),
     html.Div(id="bins-readout"),
@@ -349,15 +462,8 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins):
         yaxis="y2"
     ))
     
-    # Add subtitle showing data source
-    subtitle = "Cached data" if is_cached else "Fresh BigQuery data"
     
     fig.update_layout(
-        title=dict(
-            text=f"GCP EGG Statistical Analysis<br><sub>{subtitle} • {elapsed_time:.2f}s</sub>",
-            x=0.5,
-            xanchor="center"
-        ),
         xaxis_title="Minutes from window start",
         yaxis=dict(title="Cumulative χ²", side="left", color="red"),
         yaxis2=dict(title="Cumulative Stouffer Z", side="right", color="blue", overlaying="y"),
