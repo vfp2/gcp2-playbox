@@ -595,11 +595,32 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     print(f"DEBUG: DataFrame shape: {df.shape}")
     print(f"DEBUG: cum_chi2 values: {df['cum_chi2'].tolist()}")
 
-    x = df["bin_idx"] * (window_len / bins) / 60  # minutes
+    # Calculate x-axis values and determine appropriate units
+    seconds_per_bin = window_len / bins
+    
+    # Choose appropriate time unit based on total window length for better readability
+    if window_len < 3600:  # Less than 1 hour
+        time_unit = "minutes"
+        conversion_factor = 60
+        x = df["bin_idx"] * seconds_per_bin / 60
+    elif window_len < 86400:  # Less than 1 day
+        time_unit = "hours"
+        conversion_factor = 3600
+        x = df["bin_idx"] * seconds_per_bin / 3600
+    elif window_len < 604800:  # Less than 1 week
+        time_unit = "days"
+        conversion_factor = 86400
+        x = df["bin_idx"] * seconds_per_bin / 86400
+    else:  # 1 week or more
+        time_unit = "days"
+        conversion_factor = 86400
+        x = df["bin_idx"] * seconds_per_bin / 86400
+    
     print(f"DEBUG: x values: {x.tolist()}")
     print(f"DEBUG: y values: {df['cum_chi2'].tolist()}")
     print(f"DEBUG: Stouffer Z values: {df['cum_stouffer_z'].tolist()}")
     print(f"DEBUG: Average active eggs: {df['avg_active_eggs'].tolist()}")
+    print(f"DEBUG: Time unit: {time_unit}, conversion factor: {conversion_factor}")
     
     # Create dual-axis plot with both chi-square and Stouffer Z
     fig = go.Figure()
@@ -626,7 +647,7 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     
     
     fig.update_layout(
-        xaxis_title="Minutes from window start",
+        xaxis_title=f"Time from window start ({time_unit})",
         yaxis=dict(title="Cumulative χ²", side="left", color="orange"),
         yaxis2=dict(title="Cumulative Stouffer Z", side="right", color="purple", overlaying="y"),
         margin=dict(l=40, r=40, t=60, b=40),
@@ -636,7 +657,20 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     start_date_str = f"Date: {selected_date.strftime('%Y-%m-%d')}"
     start_time_str = f"Time: {selected_time.strftime('%H:%M:%S')}"
     len_str   = f"Length: {_td(seconds=window_len)} ({window_len:,} s)"
-    bins_str  = f"Bins: {bins} (≈ {window_len/bins:.1f} s/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS)}"
+    # Format bin duration for display
+    bin_duration = window_len / bins
+    if bin_duration < 60:
+        bin_duration_str = f"{bin_duration:.1f}s"
+    elif bin_duration < 3600:
+        bin_duration_str = f"{bin_duration/60:.1f}m"
+    elif bin_duration < 86400:
+        bin_duration_str = f"{bin_duration/3600:.1f}h"
+    elif bin_duration < 604800:
+        bin_duration_str = f"{bin_duration/86400:.1f}d"
+    else:
+        bin_duration_str = f"{bin_duration/86400:.1f}d"
+    
+    bins_str  = f"Bins: {bins} (≈ {bin_duration_str}/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS)}"
     
     # Status indicator with more details
     if is_cached:
@@ -650,4 +684,4 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
             start_date_days, start_time_seconds, window_len, bins)
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8050)
+    app.run(debug=True, host="1.0.0.0", port=8050)
