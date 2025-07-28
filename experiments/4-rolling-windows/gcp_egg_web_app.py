@@ -219,6 +219,15 @@ app.layout = html.Div([
     ),
 
     html.Label("Window start date (UTC)"),
+    html.Div([
+        dcc.DatePickerSingle(
+            id="date-picker",
+            date=DEFAULT_DATE,
+            display_format="YYYY-MM-DD",
+            style={"marginRight": "10px"}
+        ),
+        html.Span(" or use slider below", style={"fontSize": "12px", "color": "gray"})
+    ], style={"marginBottom": "10px"}),
     dcc.Slider(
         id="start-date", 
         min=0, 
@@ -227,31 +236,31 @@ app.layout = html.Div([
         value=(DEFAULT_DATE - DATE_MIN).days, 
         marks={
             0: "1998",
-            365: "1999",
-            365*2: "2000",
-            365*3: "2001",
-            365*4: "2002",
-            365*5: "2003",
-            365*6: "2004",
-            365*7: "2005",
-            365*8: "2006",
-            365*9: "2007",
-            365*10: "2008",
-            365*11: "2009",
-            365*12: "2010",
-            365*13: "2011",
-            365*14: "2012",
-            365*15: "2013",
-            365*16: "2014",
-            365*17: "2015",
-            365*18: "2016",
-            365*19: "2017",
-            365*20: "2018",
-            365*21: "2019",
-            365*22: "2020",
-            365*23: "2021",
-            365*24: "2022",
-            365*25: "2023"
+            (_dt(1999, 1, 1).date() - DATE_MIN).days: "1999",
+            (_dt(2000, 1, 1).date() - DATE_MIN).days: "2000",
+            (_dt(2001, 1, 1).date() - DATE_MIN).days: "2001",
+            (_dt(2002, 1, 1).date() - DATE_MIN).days: "2002",
+            (_dt(2003, 1, 1).date() - DATE_MIN).days: "2003",
+            (_dt(2004, 1, 1).date() - DATE_MIN).days: "2004",
+            (_dt(2005, 1, 1).date() - DATE_MIN).days: "2005",
+            (_dt(2006, 1, 1).date() - DATE_MIN).days: "2006",
+            (_dt(2007, 1, 1).date() - DATE_MIN).days: "2007",
+            (_dt(2008, 1, 1).date() - DATE_MIN).days: "2008",
+            (_dt(2009, 1, 1).date() - DATE_MIN).days: "2009",
+            (_dt(2010, 1, 1).date() - DATE_MIN).days: "2010",
+            (_dt(2011, 1, 1).date() - DATE_MIN).days: "2011",
+            (_dt(2012, 1, 1).date() - DATE_MIN).days: "2012",
+            (_dt(2013, 1, 1).date() - DATE_MIN).days: "2013",
+            (_dt(2014, 1, 1).date() - DATE_MIN).days: "2014",
+            (_dt(2015, 1, 1).date() - DATE_MIN).days: "2015",
+            (_dt(2016, 1, 1).date() - DATE_MIN).days: "2016",
+            (_dt(2017, 1, 1).date() - DATE_MIN).days: "2017",
+            (_dt(2018, 1, 1).date() - DATE_MIN).days: "2018",
+            (_dt(2019, 1, 1).date() - DATE_MIN).days: "2019",
+            (_dt(2020, 1, 1).date() - DATE_MIN).days: "2020",
+            (_dt(2021, 1, 1).date() - DATE_MIN).days: "2021",
+            (_dt(2022, 1, 1).date() - DATE_MIN).days: "2022",
+            (_dt(2023, 1, 1).date() - DATE_MIN).days: "2023"
         },
         updatemode="mouseup",
         tooltip={"placement": "bottom"}
@@ -259,6 +268,16 @@ app.layout = html.Div([
     html.Div(id="start-date-readout", style={"marginBottom": "0.5rem"}),
     
     html.Label("Window start time (UTC)"),
+    html.Div([
+        dcc.Input(
+            id="time-input",
+            type="text",
+            value=DEFAULT_TIME.strftime("%H:%M"),
+            placeholder="HH:MM",
+            style={"marginRight": "10px", "width": "100px"}
+        ),
+        html.Span(" or use slider below", style={"fontSize": "12px", "color": "gray"})
+    ], style={"marginBottom": "10px"}),
     dcc.Slider(
         id="start-time", 
         min=0, 
@@ -322,11 +341,23 @@ app.layout = html.Div([
     html.Div(id="start-time-readout", style={"marginBottom": "1rem"}),
 
     html.Label("Window length (s)"),
+    html.Div([
+        dcc.Input(
+            id="window-length-input",
+            type="number",
+            value=6*3600,
+            min=LEN_MIN_S,
+            max=LEN_MAX_S,
+            step=60,
+            style={"marginRight": "10px", "width": "120px"}
+        ),
+        html.Span(" seconds or use slider below", style={"fontSize": "12px", "color": "gray"})
+    ], style={"marginBottom": "10px"}),
     dcc.Slider(
         id="len", min=LEN_MIN_S, max=LEN_MAX_S, step=60, value=6*3600,
         marks={
             60: "1m",
-            3600: "1h",
+            43200: "12h",
             86400: "1d",
             172800: "2d",
             259200: "3d",
@@ -340,12 +371,24 @@ app.layout = html.Div([
     html.Div(id="len-readout", style={"marginBottom": "1rem"}),
 
     html.Label("Bin count"),
+    html.Div([
+        dcc.Input(
+            id="bin-count-input",
+            type="number",
+            value=72,
+            min=BINS_MIN,
+            max=BINS_MAX,
+            step=1,
+            style={"marginRight": "10px", "width": "80px"}
+        ),
+        html.Span(" bins or use slider below", style={"fontSize": "12px", "color": "gray"})
+    ], style={"marginBottom": "10px"}),
     dcc.Slider(
-        id="bins", min=BINS_MIN, max=BINS_MAX, step=10, value=72,
+        id="bins", min=BINS_MIN, max=BINS_MAX, step=1, value=72,
         marks={
             1: "1",
-            10: "10",
-            50: "50",
+            20: "20",
+            75: "75",
             100: "100",
             200: "200",
             300: "300",
@@ -383,21 +426,71 @@ app.layout = html.Div([
     Output("len-readout", "children"),
     Output("bins-readout", "children"),
     Output("status-indicator", "children"),
-    Input("start-date", "value"), Input("start-time", "value"), Input("len", "value"), Input("bins", "value")
+    Output("date-picker", "date"),
+    Output("time-input", "value"),
+    Output("window-length-input", "value"),
+    Output("bin-count-input", "value"),
+    Input("start-date", "value"), Input("start-time", "value"), Input("len", "value"), Input("bins", "value"),
+    Input("date-picker", "date"), Input("time-input", "value"), Input("window-length-input", "value"), Input("bin-count-input", "value")
 )
-def update_graph(start_date_days, start_time_seconds, window_len, bins):
+def update_graph(start_date_days, start_time_seconds, window_len, bins, 
+                date_picker, time_input, window_length_input, bin_count_input):
     import time
+    from dash import ctx
+    
     start_time = time.time()
     
-    window_len = max(int(window_len or 1), 1)
-    bins       = max(int(bins or 1), 1)
+    # Determine which input triggered the callback and use that value
+    triggered_id = ctx.triggered_id if ctx.triggered else None
     
-    # Convert date and time inputs to timestamp
-    selected_date = DATE_MIN + _td(days=int(start_date_days or 0))
-    hours = int(start_time_seconds or 0) // 3600
-    minutes = (int(start_time_seconds or 0) % 3600) // 60
-    seconds = int(start_time_seconds or 0) % 60
-    selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}:{seconds:02d}", "%H:%M:%S").time()
+    # Handle date input
+    if triggered_id == "date-picker" and date_picker:
+        selected_date = _dt.strptime(date_picker, "%Y-%m-%d").date()
+        start_date_days = (selected_date - DATE_MIN).days
+    else:
+        selected_date = DATE_MIN + _td(days=int(start_date_days or 0))
+    
+    # Handle time input
+    if triggered_id == "time-input" and time_input:
+        try:
+            # Validate time format (HH:MM)
+            if ":" in time_input and len(time_input.split(":")) == 2:
+                hours, minutes = map(int, time_input.split(":"))
+                if 0 <= hours <= 23 and 0 <= minutes <= 59:
+                    selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}", "%H:%M").time()
+                    start_time_seconds = hours * 3600 + minutes * 60
+                else:
+                    # Invalid time, use existing value
+                    hours = int(start_time_seconds or 0) // 3600
+                    minutes = (int(start_time_seconds or 0) % 3600) // 60
+                    selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}", "%H:%M").time()
+            else:
+                # Invalid format, use existing value
+                hours = int(start_time_seconds or 0) // 3600
+                minutes = (int(start_time_seconds or 0) % 3600) // 60
+                selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}", "%H:%M").time()
+        except (ValueError, TypeError):
+            # Invalid input, use existing value
+            hours = int(start_time_seconds or 0) // 3600
+            minutes = (int(start_time_seconds or 0) % 3600) // 60
+            selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}", "%H:%M").time()
+    else:
+        hours = int(start_time_seconds or 0) // 3600
+        minutes = (int(start_time_seconds or 0) % 3600) // 60
+        seconds = int(start_time_seconds or 0) % 60
+        selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}:{seconds:02d}", "%H:%M:%S").time()
+    
+    # Handle window length input
+    if triggered_id == "window-length-input" and window_length_input is not None:
+        window_len = max(int(window_length_input), LEN_MIN_S)
+    else:
+        window_len = max(int(window_len or 1), 1)
+    
+    # Handle bin count input
+    if triggered_id == "bin-count-input" and bin_count_input is not None:
+        bins = max(int(bin_count_input), BINS_MIN)
+    else:
+        bins = max(int(bins or 1), 1)
     
     # Combine date and time into datetime
     start_ts = _dt.combine(selected_date, selected_time, tzinfo=_tz.utc).timestamp()
@@ -425,7 +518,8 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins):
             margin=dict(l=40, r=40, t=60, b=40)
         )
         status_str = f"⚠ No data found in {elapsed_time:.2f}s"
-        return fig, "No data", "", "", "", status_str
+        return (fig, "No data", "", "", "", status_str,
+                selected_date, selected_time.strftime("%H:%M"), window_len, bins)
 
     # Debug: Print DataFrame contents
     print("DEBUG: DataFrame contents:")
@@ -482,7 +576,9 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins):
     else:
         status_str = f"🔄 BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins}"
     
-    return fig, start_date_str, start_time_str, len_str, bins_str, status_str
+    # Return all outputs including the input components for synchronization
+    return (fig, start_date_str, start_time_str, len_str, bins_str, status_str,
+            selected_date, selected_time.strftime("%H:%M"), window_len, bins)
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8050)
