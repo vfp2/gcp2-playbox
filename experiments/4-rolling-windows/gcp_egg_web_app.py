@@ -684,4 +684,4 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
             start_date_days, start_time_seconds, window_len, bins)
 
 if __name__ == "__main__":
-    app.run(debug=True, host="1.0.0.0", port=8050)
+    app.run(debug=True, host="0.0.0.0", port=8050)
