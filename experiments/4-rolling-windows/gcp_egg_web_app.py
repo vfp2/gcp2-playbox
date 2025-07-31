@@ -37,7 +37,7 @@ DATE_MIN = _dt(1998, 8, 3, tzinfo=_tz.utc).date()
 DATE_MAX = _dt(2023, 8, 25, tzinfo=_tz.utc).date()
 # Default to start of 911 Nelson experiment (first plane hit WTC at 8:46 AM EDT = 12:46 PM UTC)
 DEFAULT_DATE = _dt(2001, 9, 11, tzinfo=_tz.utc).date()
-DEFAULT_TIME = _dt(2001, 9, 11, 12, 46, 0, tzinfo=_tz.utc).time()
+DEFAULT_TIME = _dt(2001, 9, 11, 12, 35, 0, tzinfo=_tz.utc).time()
 LEN_MIN_S, LEN_MAX_S = 60, 30 * 24 * 3600                # 1 min – 30 days
 BINS_MIN, BINS_MAX   = 1, 2000
 
