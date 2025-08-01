@@ -3,9 +3,10 @@ Dash web application to explore Global Consciousness Project (GCP) EGG data
 stored in BigQuery and reproduce Nelson-style statistical analysis.
 
 * Full egg list ({len(EGG_COLS)} columns)
-* Implements both published GCP methods:
-  - Stouffer Z (mean shift detection): Z_s = ΣZ_i/√N (dynamic N based on active eggs)
-  - Chi-square (variance analysis): χ² = ΣZ_i² (excludes NULL eggs)
+* Implements correct GCP methodology:
+  1. Stouffer Z across eggs: Z_t(s) = ΣZ_i/√N (dynamic N based on active eggs)
+  2. χ² based on Stouffer Z: (Z_t(s))² (distributed as χ²(1) under null hypothesis)
+  3. Cumulative deviation: Σ((Z_t(s))² - 1) to detect departure from randomness
 * Uses published expected values: μ=100, σ=7.0712
 * Handles missing egg data by dynamically adjusting N in Stouffer Z calculation
 * Guards against division-by-zero and empty windows
@@ -91,11 +92,8 @@ def build_sql() -> str:
     stouffer_z = " + ".join(stouffer_z_terms)
     stouffer_z = f"SAFE_DIVIDE({stouffer_z}, SQRT({null_count_block})) AS stouffer_z"
     
-    # Calculate sum of squared Z-scores for variance analysis (only include non-null eggs)
-    chi2_terms = []
-    for c in EGG_COLS:
-        chi2_terms.append(f"IF(z_{c} IS NOT NULL, POW(z_{c},2), 0)")
-    chi2_sum = " + ".join(chi2_terms)
+    # Calculate χ² based on Stouffer Z: (Stouffer Z)² - 1 (deviation from null hypothesis)
+    chi2_stouffer = f"POW({stouffer_z}, 2) - 1 AS chi2_stouffer"
 
     return f"""
 DECLARE start_ts TIMESTAMP DEFAULT @start_ts;
@@ -118,7 +116,7 @@ z AS (
 ),
 sec AS (
   SELECT recorded_at, 
-         {chi2_sum} AS chi2_sec,
+         {chi2_stouffer},
          {stouffer_z},
          {null_count_block} AS active_eggs
   FROM z
@@ -126,14 +124,13 @@ sec AS (
 bins AS (
   SELECT
     CAST(FLOOR(TIMESTAMP_DIFF(recorded_at, start_ts, SECOND)/sec_per_bin) AS INT64) AS bin_idx,
-    SUM(chi2_sec) AS chi2_bin,
-    SUM(stouffer_z) AS stouffer_z_sum,
+    SUM(chi2_stouffer) AS chi2_stouffer_sum,
     COUNT(*) AS seconds_in_bin,
     AVG(active_eggs) AS avg_active_eggs
   FROM sec
   GROUP BY bin_idx
 )
-SELECT bin_idx, chi2_bin, stouffer_z_sum, seconds_in_bin, avg_active_eggs
+SELECT bin_idx, chi2_stouffer_sum, seconds_in_bin, avg_active_eggs
 FROM bins
 ORDER BY bin_idx;"""
 
@@ -187,8 +184,7 @@ def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
             bq_client.query(sql, job_config=cfg)
             .to_dataframe(bqstorage_client=bqs_client, create_bqstorage_client=True)
         )
-        df["cum_chi2"] = df["chi2_bin"].cumsum()
-        df["cum_stouffer_z"] = df["stouffer_z_sum"].cumsum()
+        df["cum_stouffer_z"] = df["chi2_stouffer_sum"].cumsum()
         CACHE.set(key, df, expire=3600)
 
     # Always print SQL and result for debugging and verification
@@ -205,8 +201,7 @@ app.title = "GCP EGG Statistical Analysis Explorer"
 app.layout = html.Div([
     html.H3("GCP EGG Statistical Analysis Explorer"),
     html.P([
-        "Orange line: χ² per bin (variance analysis) | ",
-        "Purple line: Cumulative Stouffer Z (mean shift analysis)"
+        "Purple line: Cumulative deviation of χ² based on Stouffer Z (detects departure from randomness)"
     ], style={"fontSize": "14px", "color": "gray", "marginBottom": "10px"}),
     
     # Loading wrapper around the graph
@@ -598,34 +593,21 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     
 
     
-    # Create dual-axis plot with both chi-square and Stouffer Z
+    # Create single-axis plot for cumulative deviation of χ² based on Stouffer Z
     fig = go.Figure()
     
-    # Add chi-square trace (left y-axis) - plot individual bin values, not cumulative
-    fig.add_trace(go.Scatter(
-        x=x, 
-        y=df["chi2_bin"], 
-        mode="lines",
-        name="χ² per bin",
-        line=dict(color="orange"),
-        yaxis="y"
-    ))
-    
-    # Add Stouffer Z trace (right y-axis) - keep cumulative for mean shift detection
+    # Add cumulative deviation trace
     fig.add_trace(go.Scatter(
         x=x, 
         y=df["cum_stouffer_z"], 
         mode="lines",
-        name="Cumulative Stouffer Z",
-        line=dict(color="purple"),
-        yaxis="y2"
+        name="Cumulative deviation of χ² based on Stouffer Z",
+        line=dict(color="purple")
     ))
-    
     
     fig.update_layout(
         xaxis_title=f"Time from window start ({time_unit})",
-        yaxis=dict(title="χ² per bin", side="left", color="orange"),
-        yaxis2=dict(title="Cumulative Stouffer Z", side="right", color="purple", overlaying="y"),
+        yaxis_title="Cumulative deviation of χ² based on Stouffer Z",
         margin=dict(l=40, r=40, t=60, b=40),
         legend=dict(x=0.02, y=0.98)
     )
@@ -646,7 +628,7 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     else:
         bin_duration_str = f"{bin_duration/86400:.1f}d"
     
-    bins_str  = f"Bins: {bins} (≈ {bin_duration_str}/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS)}"
+    bins_str  = f"Bins: {bins} (≈ {bin_duration_str}/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS)} | Method: (Stouffer Z)² - 1"
     
     # Status indicator with more details
     if is_cached:
