@@ -89,11 +89,11 @@ def build_sql() -> str:
     stouffer_z_terms = []
     for c in EGG_COLS:
         stouffer_z_terms.append(f"IF(z_{c} IS NOT NULL, z_{c}, 0)")
-    stouffer_z = " + ".join(stouffer_z_terms)
-    stouffer_z = f"SAFE_DIVIDE({stouffer_z}, SQRT({null_count_block})) AS stouffer_z"
+    stouffer_z_sum = " + ".join(stouffer_z_terms)
+    stouffer_z = f"SAFE_DIVIDE({stouffer_z_sum}, SQRT({null_count_block})) AS stouffer_z"
     
     # Calculate χ² based on Stouffer Z: (Stouffer Z)² - 1 (deviation from null hypothesis)
-    chi2_stouffer = f"POW({stouffer_z}, 2) - 1 AS chi2_stouffer"
+    chi2_stouffer = f"POW(SAFE_DIVIDE({stouffer_z_sum}, SQRT({null_count_block})), 2) - 1 AS chi2_stouffer"
 
     return f"""
 DECLARE start_ts TIMESTAMP DEFAULT @start_ts;
