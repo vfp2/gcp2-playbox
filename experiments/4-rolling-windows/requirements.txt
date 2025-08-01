@@ -7,3 +7,4 @@ numpy
 duckdb
 diskcache
 python-dotenv
+db-dtypes
