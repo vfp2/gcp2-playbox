@@ -40,7 +40,7 @@ DATE_MAX = _dt(2023, 8, 25, tzinfo=_tz.utc).date()
 DEFAULT_DATE = _dt(2001, 9, 11, tzinfo=_tz.utc).date()
 DEFAULT_TIME = _dt(2001, 9, 11, 12, 35, 0, tzinfo=_tz.utc).time()  # 8:35 AM EDT = 12:35 PM UTC
 LEN_MIN_S, LEN_MAX_S = 60, 30 * 24 * 3600                # 1 min – 30 days
-BINS_MIN, BINS_MAX   = 1, 2000
+BINS_MIN, BINS_MAX   = 1, 30000
 
 CACHE = dc.Cache("./bq_cache", size_limit=2 * 1024**3)
 # Track which parameter combinations have already been printed this runtime
@@ -374,40 +374,27 @@ app.layout = html.Div([
         dcc.Input(
             id="bin-count-input",
             type="text",
-            value=72,
-            placeholder="bins (1-2000)",
+            value=15000,
+            placeholder="bins (1-30000)",
             style={"marginRight": "10px", "width": "80px"}
         ),
         html.Span(" bins or use slider below", style={"fontSize": "12px", "color": "gray"}),
-        html.Div("Enter number of bins (1 to 2,000)", 
+        html.Div("Enter number of bins (1 to 30,000)", 
                 style={"fontSize": "11px", "color": "gray", "marginTop": "2px"})
     ], style={"marginBottom": "10px"}),
     dcc.Slider(
-        id="bins", min=BINS_MIN, max=BINS_MAX, step=1, value=72,
+        id="bins", min=BINS_MIN, max=BINS_MAX, step=1, value=15000,
         marks={
             1: "1",
-            20: "20",
-            75: "75",
             100: "100",
-            200: "200",
-            300: "300",
-            400: "400",
             500: "500",
-            600: "600",
-            700: "700",
-            800: "800",
-            900: "900",
             1000: "1K",
-            1100: "1.1K",
-            1200: "1.2K",
-            1300: "1.3K",
-            1400: "1.4K",
-            1500: "1.5K",
-            1600: "1.6K",
-            1700: "1.7K",
-            1800: "1.8K",
-            1900: "1.9K",
-            2000: "2K"
+            5000: "5K",
+            10000: "10K",
+            15000: "15K",
+            20000: "20K",
+            25000: "25K",
+            30000: "30K"
         },
         updatemode="mouseup", tooltip={"placement": "bottom"}
     ),
@@ -450,7 +437,7 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     start_date_days = int(start_date_days or 0)
     start_time_seconds = int(start_time_seconds or 0)
     window_len = max(int(window_len or 15000), LEN_MIN_S)  # 4 hours 10 minutes
-    bins = max(int(bins or 72), BINS_MIN)
+    bins = max(int(bins or 15000), BINS_MIN)
     
     # Handle date synchronization
     if triggered_id == "date-picker" and date_picker:
