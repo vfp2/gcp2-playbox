@@ -37,7 +37,7 @@ DATE_MIN = _dt(1998, 8, 3, tzinfo=_tz.utc).date()
 DATE_MAX = _dt(2023, 8, 25, tzinfo=_tz.utc).date()
 # Default to start of 911 Nelson experiment (first plane hit WTC at 8:46 AM EDT = 12:46 PM UTC)
 DEFAULT_DATE = _dt(2001, 9, 11, tzinfo=_tz.utc).date()
-DEFAULT_TIME = _dt(2001, 9, 11, 12, 35, 0, tzinfo=_tz.utc).time()
+DEFAULT_TIME = _dt(2001, 9, 11, 12, 35, 0, tzinfo=_tz.utc).time()  # 8:35 AM EDT = 12:35 PM UTC
 LEN_MIN_S, LEN_MAX_S = 60, 30 * 24 * 3600                # 1 min – 30 days
 BINS_MIN, BINS_MAX   = 1, 2000
 
@@ -349,7 +349,7 @@ app.layout = html.Div([
         dcc.Input(
             id="window-length-input",
             type="text",
-            value=6*3600,
+            value=15000,  # 4 hours 10 minutes
             placeholder="seconds (60-2592000)",
             style={"marginRight": "10px", "width": "120px"}
         ),
@@ -358,7 +358,7 @@ app.layout = html.Div([
                 style={"fontSize": "11px", "color": "gray", "marginTop": "2px"})
     ], style={"marginBottom": "10px"}),
     dcc.Slider(
-        id="len", min=LEN_MIN_S, max=LEN_MAX_S, step=60, value=6*3600,
+        id="len", min=LEN_MIN_S, max=LEN_MAX_S, step=60, value=15000,  # 4 hours 10 minutes
         marks={
             60: "1m",
             43200: "12h",
@@ -456,7 +456,7 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     # Initialize values with defaults
     start_date_days = int(start_date_days or 0)
     start_time_seconds = int(start_time_seconds or 0)
-    window_len = max(int(window_len or 6*3600), LEN_MIN_S)
+    window_len = max(int(window_len or 15000), LEN_MIN_S)  # 4 hours 10 minutes
     bins = max(int(bins or 72), BINS_MIN)
     
     # Handle date synchronization
