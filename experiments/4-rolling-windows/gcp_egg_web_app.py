@@ -39,7 +39,7 @@ DATE_MAX = _dt(2023, 8, 25, tzinfo=_tz.utc).date()
 # Default to start of 911 Nelson experiment (first plane hit WTC at 8:46 AM EDT = 12:46 PM UTC)
 DEFAULT_DATE = _dt(2001, 9, 11, tzinfo=_tz.utc).date()
 DEFAULT_TIME = _dt(2001, 9, 11, 12, 35, 0, tzinfo=_tz.utc).time()  # 8:35 AM EDT = 12:35 PM UTC
-LEN_MIN_S, LEN_MAX_S = 60, 30 * 24 * 3600                # 1 min – 30 days
+LEN_MIN_S, LEN_MAX_S = 60, 230 * 24 * 3600                # 1 min – 230 days
 BINS_MIN, BINS_MAX   = 1, 30000
 
 CACHE = dc.Cache("./bq_cache", size_limit=2 * 1024**3)
@@ -349,7 +349,7 @@ app.layout = html.Div([
             style={"marginRight": "10px", "width": "120px"}
         ),
         html.Span(" seconds or use slider below", style={"fontSize": "12px", "color": "gray"}),
-        html.Div("Enter seconds (60 to 2,592,000)", 
+        html.Div("Enter seconds (60 to 19,872,000)", 
                 style={"fontSize": "11px", "color": "gray", "marginTop": "2px"})
     ], style={"marginBottom": "10px"}),
     dcc.Slider(
@@ -363,7 +363,10 @@ app.layout = html.Div([
             604800: "1w",
             1209600: "2w",
             1814400: "3w",
-            2592000: "30d"
+            2592000: "30d",
+            7776000: "90d",
+            15552000: "180d",
+            19872000: "230d"
         },
         updatemode="mouseup", tooltip={"placement": "bottom"}
     ),
