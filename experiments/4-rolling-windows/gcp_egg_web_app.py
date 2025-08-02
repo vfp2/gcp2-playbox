@@ -271,54 +271,58 @@ app.index_string = '''
         {%css%}
         <style>
             @keyframes dateSliderPulse {
-                0% { background: linear-gradient(90deg, #ff006e 0%, #ff6b9d 50%, #ff9ecd 100%); }
-                25% { background: linear-gradient(90deg, #ff6b9d 0%, #ff9ecd 50%, #ff006e 100%); }
-                50% { background: linear-gradient(90deg, #ff9ecd 0%, #ff006e 50%, #ff6b9d 100%); }
-                75% { background: linear-gradient(90deg, #ff006e 0%, #ff6b9d 50%, #ff9ecd 100%); }
-                100% { background: linear-gradient(90deg, #ff006e 0%, #ff6b9d 50%, #ff9ecd 100%); }
+                0% { background: linear-gradient(90deg, #ff006e 0%, #ff6b9d 25%, #ff9ecd 50%, #ff6b9d 75%, #ff006e 100%); }
+                20% { background: linear-gradient(90deg, #ff6b9d 0%, #ff9ecd 25%, #ff006e 50%, #ff6b9d 75%, #ff9ecd 100%); }
+                40% { background: linear-gradient(90deg, #ff9ecd 0%, #ff006e 25%, #ff6b9d 50%, #ff9ecd 75%, #ff006e 100%); }
+                60% { background: linear-gradient(90deg, #ff006e 0%, #ff6b9d 25%, #ff9ecd 50%, #ff6b9d 75%, #ff006e 100%); }
+                80% { background: linear-gradient(90deg, #ff6b9d 0%, #ff9ecd 25%, #ff006e 50%, #ff6b9d 75%, #ff9ecd 100%); }
+                100% { background: linear-gradient(90deg, #ff006e 0%, #ff6b9d 25%, #ff9ecd 50%, #ff6b9d 75%, #ff006e 100%); }
             }
             
             @keyframes timeSliderPulse {
-                0% { background: linear-gradient(90deg, #00d4ff 0%, #4de6ff 50%, #99f2ff 100%); }
-                25% { background: linear-gradient(90deg, #4de6ff 0%, #99f2ff 50%, #00d4ff 100%); }
-                50% { background: linear-gradient(90deg, #99f2ff 0%, #00d4ff 50%, #4de6ff 100%); }
-                75% { background: linear-gradient(90deg, #00d4ff 0%, #4de6ff 50%, #99f2ff 100%); }
-                100% { background: linear-gradient(90deg, #00d4ff 0%, #4de6ff 50%, #99f2ff 100%); }
+                0% { background: linear-gradient(90deg, #00d4ff 0%, #4de6ff 25%, #99f2ff 50%, #4de6ff 75%, #00d4ff 100%); }
+                20% { background: linear-gradient(90deg, #4de6ff 0%, #99f2ff 25%, #00d4ff 50%, #4de6ff 75%, #99f2ff 100%); }
+                40% { background: linear-gradient(90deg, #99f2ff 0%, #00d4ff 25%, #4de6ff 50%, #99f2ff 75%, #00d4ff 100%); }
+                60% { background: linear-gradient(90deg, #00d4ff 0%, #4de6ff 25%, #99f2ff 50%, #4de6ff 75%, #00d4ff 100%); }
+                80% { background: linear-gradient(90deg, #4de6ff 0%, #99f2ff 25%, #00d4ff 50%, #4de6ff 75%, #99f2ff 100%); }
+                100% { background: linear-gradient(90deg, #00d4ff 0%, #4de6ff 25%, #99f2ff 50%, #4de6ff 75%, #00d4ff 100%); }
             }
             
             @keyframes lengthSliderPulse {
-                0% { background: linear-gradient(90deg, #9d4edd 0%, #b366e6 50%, #c980ef 100%); }
-                25% { background: linear-gradient(90deg, #b366e6 0%, #c980ef 50%, #9d4edd 100%); }
-                50% { background: linear-gradient(90deg, #c980ef 0%, #9d4edd 50%, #b366e6 100%); }
-                75% { background: linear-gradient(90deg, #9d4edd 0%, #b366e6 50%, #c980ef 100%); }
-                100% { background: linear-gradient(90deg, #9d4edd 0%, #b366e6 50%, #c980ef 100%); }
+                0% { background: linear-gradient(90deg, #9d4edd 0%, #b366e6 25%, #c980ef 50%, #b366e6 75%, #9d4edd 100%); }
+                20% { background: linear-gradient(90deg, #b366e6 0%, #c980ef 25%, #9d4edd 50%, #b366e6 75%, #c980ef 100%); }
+                40% { background: linear-gradient(90deg, #c980ef 0%, #9d4edd 25%, #b366e6 50%, #c980ef 75%, #9d4edd 100%); }
+                60% { background: linear-gradient(90deg, #9d4edd 0%, #b366e6 25%, #c980ef 50%, #b366e6 75%, #9d4edd 100%); }
+                80% { background: linear-gradient(90deg, #b366e6 0%, #c980ef 25%, #9d4edd 50%, #b366e6 75%, #c980ef 100%); }
+                100% { background: linear-gradient(90deg, #9d4edd 0%, #b366e6 25%, #c980ef 50%, #b366e6 75%, #9d4edd 100%); }
             }
             
             @keyframes binsSliderPulse {
-                0% { background: linear-gradient(90deg, #00ff88 0%, #4dffa3 50%, #99ffbe 100%); }
-                25% { background: linear-gradient(90deg, #4dffa3 0%, #99ffbe 50%, #00ff88 100%); }
-                50% { background: linear-gradient(90deg, #99ffbe 0%, #00ff88 50%, #4dffa3 100%); }
-                75% { background: linear-gradient(90deg, #00ff88 0%, #4dffa3 50%, #99ffbe 100%); }
-                100% { background: linear-gradient(90deg, #00ff88 0%, #4dffa3 50%, #99ffbe 100%); }
+                0% { background: linear-gradient(90deg, #00ff88 0%, #4dffa3 25%, #99ffbe 50%, #4dffa3 75%, #00ff88 100%); }
+                20% { background: linear-gradient(90deg, #4dffa3 0%, #99ffbe 25%, #00ff88 50%, #4dffa3 75%, #99ffbe 100%); }
+                40% { background: linear-gradient(90deg, #99ffbe 0%, #00ff88 25%, #4dffa3 50%, #99ffbe 75%, #00ff88 100%); }
+                60% { background: linear-gradient(90deg, #00ff88 0%, #4dffa3 25%, #99ffbe 50%, #4dffa3 75%, #00ff88 100%); }
+                80% { background: linear-gradient(90deg, #4dffa3 0%, #99ffbe 25%, #00ff88 50%, #4dffa3 75%, #99ffbe 100%); }
+                100% { background: linear-gradient(90deg, #00ff88 0%, #4dffa3 25%, #99ffbe 50%, #4dffa3 75%, #00ff88 100%); }
             }
             
             .date-slider .rc-slider-track {
-                animation: dateSliderPulse 3s ease-in-out infinite;
+                animation: dateSliderPulse 0.4s linear infinite;
                 box-shadow: 0 0 15px rgba(255, 0, 110, 0.6);
             }
             
             .time-slider .rc-slider-track {
-                animation: timeSliderPulse 2.5s ease-in-out infinite;
+                animation: timeSliderPulse 0.3s linear infinite;
                 box-shadow: 0 0 15px rgba(0, 212, 255, 0.6);
             }
             
             .length-slider .rc-slider-track {
-                animation: lengthSliderPulse 3.5s ease-in-out infinite;
+                animation: lengthSliderPulse 0.5s linear infinite;
                 box-shadow: 0 0 15px rgba(157, 78, 221, 0.6);
             }
             
             .bins-slider .rc-slider-track {
-                animation: binsSliderPulse 2s ease-in-out infinite;
+                animation: binsSliderPulse 0.25s linear infinite;
                 box-shadow: 0 0 15px rgba(0, 255, 136, 0.6);
             }
             
