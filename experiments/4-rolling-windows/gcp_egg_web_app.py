@@ -166,6 +166,68 @@ def render_sql(start_ts: float, window_s: int, bins: int) -> str:
 
 # ───────────────────────────── query helper ────────────────────────────────
 CACHE = dc.Cache("./bq_cache", size_limit=2 * 1024**3)
+
+def get_data_range_info() -> tuple[str, str, int]:
+    """Get first recorded date, last recorded date, and total row count from the basket table.
+    
+    Returns:
+        tuple: (first_date_str, last_date_str, total_count)
+    """
+    # Cache key for data range info (version 2 to avoid old format conflicts)
+    cache_key = "data_range_info_v2"
+    
+    # Check if we have cached data range info
+    cached_info = CACHE.get(cache_key)
+    if cached_info is not None:
+        # Verify the cached data is in the new format (should be strings, not SQL)
+        if isinstance(cached_info[0], str) and not cached_info[0].startswith("SELECT"):
+            return cached_info
+        else:
+            # Old format cached - clear it and regenerate
+            CACHE.delete(cache_key)
+    
+    # SQL to find first recorded date
+    first_date_sql = f"SELECT recorded_at FROM `{GCP_PROJECT}.{GCP_DATASET}.{GCP_TABLE}` ORDER BY recorded_at ASC LIMIT 1"
+    
+    # SQL to find last recorded date  
+    last_date_sql = f"SELECT recorded_at FROM `{GCP_PROJECT}.{GCP_DATASET}.{GCP_TABLE}` ORDER BY recorded_at DESC LIMIT 1"
+    
+    # SQL to get total row count
+    count_sql = f"SELECT COUNT(*) FROM `{GCP_PROJECT}.{GCP_DATASET}.{GCP_TABLE}`"
+    
+    try:
+        # Execute queries to get actual values
+        first_date_result = bq_client.query(first_date_sql).to_dataframe()
+        last_date_result = bq_client.query(last_date_sql).to_dataframe()
+        count_result = bq_client.query(count_sql).to_dataframe()
+        
+        # Format the dates nicely
+        first_date = first_date_result.iloc[0, 0] if not first_date_result.empty else "Unknown"
+        last_date = last_date_result.iloc[0, 0] if not last_date_result.empty else "Unknown"
+        total_count = count_result.iloc[0, 0] if not count_result.empty else 0
+        
+        # Format dates as strings if they're datetime objects
+        if hasattr(first_date, 'strftime'):
+            first_date_str = first_date.strftime('%Y-%m-%d %H:%M:%S UTC')
+        else:
+            first_date_str = str(first_date)
+            
+        if hasattr(last_date, 'strftime'):
+            last_date_str = last_date.strftime('%Y-%m-%d %H:%M:%S UTC')
+        else:
+            last_date_str = str(last_date)
+        
+        result = (first_date_str, last_date_str, total_count)
+        # Cache for 1 hour since this data doesn't change frequently
+        CACHE.set(cache_key, result, expire=3600)
+        return result
+    except Exception as e:
+        print(f"Error getting data range info: {e}")
+        result = ("Unknown", "Unknown", 0)
+        # Cache the error result for a shorter time
+        CACHE.set(cache_key, result, expire=300)
+        return result
+
 def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
     key = (start_ts, window_s, bins)
     # fetch or compute dataframe
@@ -553,7 +615,11 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
             annotations=[dict(text="No data in selected window", showarrow=False)],
             margin=dict(l=40, r=40, t=60, b=40)
         )
-        status_str = f"⚠ No data found in {elapsed_time:.2f}s"
+        
+        # Get data range info for status string
+        first_date_str, last_date_str, total_count = get_data_range_info()
+        status_str = f"⚠ No data found in {elapsed_time:.2f}s | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+        
         return (fig, "No data", "", "", "", status_str,
                 selected_date, selected_time.strftime("%H:%M"), window_len, bins,
                 start_date_days, start_time_seconds, window_len, bins)
@@ -621,10 +687,13 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     bins_str  = f"Bins: {bins} (≈ {bin_duration_str}/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS)} | Method: (Stouffer Z)² - 1"
     
     # Status indicator with more details
+    # Get data range info for status string
+    first_date_str, last_date_str, total_count = get_data_range_info()
+    
     if is_cached:
-        status_str = f"✓ Cached data loaded in {elapsed_time:.2f}s"
+        status_str = f"✓ Cached data loaded in {elapsed_time:.2f}s | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
     else:
-        status_str = f"🔄 BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins}"
+        status_str = f"🔄 BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
     
     # Return all outputs including the input components for synchronization
     return (fig, start_date_str, start_time_str, len_str, bins_str, status_str,
