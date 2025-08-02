@@ -260,214 +260,418 @@ def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
 app = dash.Dash(__name__)
 app.title = "GCP EGG Statistical Analysis Explorer"
 
+# Cyberpunk psychedelic color scheme
+CYBERPUNK_COLORS = {
+    'bg_dark': '#0a0a0f',
+    'bg_medium': '#1a1a2e', 
+    'bg_light': '#16213e',
+    'neon_pink': '#ff006e',
+    'neon_cyan': '#00d4ff',
+    'neon_purple': '#9d4edd',
+    'neon_green': '#00ff88',
+    'neon_yellow': '#ffbe0b',
+    'text_primary': '#ffffff',
+    'text_secondary': '#b8b8b8',
+    'accent_gradient': 'linear-gradient(135deg, #ff006e 0%, #9d4edd 50%, #00d4ff 100%)'
+}
+
 app.layout = html.Div([
-    html.H3("GCP EGG Statistical Analysis Explorer"),
-    html.P([
-        "Purple line: Cumulative deviation of χ² based on Stouffer Z (detects departure from randomness)"
-    ], style={"fontSize": "14px", "color": "gray", "marginBottom": "10px"}),
-    
-    # Loading wrapper around the graph
-    dcc.Loading(
-        id="loading-graph",
-        type="circle",
-        children=[
-            dcc.Graph(id="chi2-graph", style={"height": "70vh"})
-        ]
-    ),
+    # Main container with cyberpunk styling
+    html.Div([
+        # Header with glowing effect
+        html.Div([
+            html.H1("GCP EGG STATISTICAL ANALYSIS EXPLORER", 
+                   style={
+                       "textAlign": "center",
+                       "color": CYBERPUNK_COLORS['text_primary'],
+                       "fontSize": "2.5rem",
+                       "fontWeight": "900",
+                       "textShadow": f"0 0 20px {CYBERPUNK_COLORS['neon_pink']}, 0 0 40px {CYBERPUNK_COLORS['neon_pink']}",
+                       "marginBottom": "10px",
+                       "fontFamily": "'Orbitron', 'Courier New', monospace",
+                       "letterSpacing": "3px"
+                   }),
+            html.P([
+                "NEURAL INTERFACE: Cumulative deviation of χ² based on Stouffer Z (detects departure from randomness)"
+            ], style={
+                "fontSize": "16px", 
+                "color": CYBERPUNK_COLORS['neon_cyan'],
+                "marginBottom": "20px",
+                "textAlign": "center",
+                "fontFamily": "'Courier New', monospace",
+                "textShadow": f"0 0 10px {CYBERPUNK_COLORS['neon_cyan']}"
+            }),
+        ], style={
+            "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
+            "padding": "20px",
+            "borderRadius": "15px",
+            "border": f"2px solid {CYBERPUNK_COLORS['neon_pink']}",
+            "boxShadow": f"0 0 30px {CYBERPUNK_COLORS['neon_pink']}40",
+            "marginBottom": "30px"
+        }),
+        
+        # Loading wrapper around the graph with cyberpunk styling
+        html.Div([
+            dcc.Loading(
+                id="loading-graph",
+                type="circle",
+                color=CYBERPUNK_COLORS['neon_cyan'],
+                children=[
+                    dcc.Graph(
+                        id="chi2-graph", 
+                        style={
+                            "height": "70vh",
+                            "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
+                            "borderRadius": "10px",
+                            "border": f"1px solid {CYBERPUNK_COLORS['neon_cyan']}",
+                            "boxShadow": f"0 0 20px {CYBERPUNK_COLORS['neon_cyan']}30"
+                        }
+                    )
+                ]
+            )
+        ], style={"marginBottom": "30px"}),
 
-    html.Label("Window start date (UTC)"),
-    html.Div([
-        dcc.DatePickerSingle(
-            id="date-picker",
-            date=DEFAULT_DATE,
-            min_date_allowed=DATE_MIN,
-            max_date_allowed=DATE_MAX,
-            display_format="YYYY-MM-DD",
-            style={"marginRight": "10px"}
-        ),
-        html.Span(" or use slider below", style={"fontSize": "12px", "color": "gray"})
-    ], style={"marginBottom": "10px"}),
-    dcc.Slider(
-        id="start-date", 
-        min=0, 
-        max=(DATE_MAX - DATE_MIN).days, 
-        step=1,
-        value=(DEFAULT_DATE - DATE_MIN).days, 
-        marks={
-            0: "1998",
-            (_dt(1999, 1, 1).date() - DATE_MIN).days: "1999",
-            (_dt(2000, 1, 1).date() - DATE_MIN).days: "2000",
-            (_dt(2001, 1, 1).date() - DATE_MIN).days: "2001",
-            (_dt(2002, 1, 1).date() - DATE_MIN).days: "2002",
-            (_dt(2003, 1, 1).date() - DATE_MIN).days: "2003",
-            (_dt(2004, 1, 1).date() - DATE_MIN).days: "2004",
-            (_dt(2005, 1, 1).date() - DATE_MIN).days: "2005",
-            (_dt(2006, 1, 1).date() - DATE_MIN).days: "2006",
-            (_dt(2007, 1, 1).date() - DATE_MIN).days: "2007",
-            (_dt(2008, 1, 1).date() - DATE_MIN).days: "2008",
-            (_dt(2009, 1, 1).date() - DATE_MIN).days: "2009",
-            (_dt(2010, 1, 1).date() - DATE_MIN).days: "2010",
-            (_dt(2011, 1, 1).date() - DATE_MIN).days: "2011",
-            (_dt(2012, 1, 1).date() - DATE_MIN).days: "2012",
-            (_dt(2013, 1, 1).date() - DATE_MIN).days: "2013",
-            (_dt(2014, 1, 1).date() - DATE_MIN).days: "2014",
-            (_dt(2015, 1, 1).date() - DATE_MIN).days: "2015",
-            (_dt(2016, 1, 1).date() - DATE_MIN).days: "2016",
-            (_dt(2017, 1, 1).date() - DATE_MIN).days: "2017",
-            (_dt(2018, 1, 1).date() - DATE_MIN).days: "2018",
-            (_dt(2019, 1, 1).date() - DATE_MIN).days: "2019",
-            (_dt(2020, 1, 1).date() - DATE_MIN).days: "2020",
-            (_dt(2021, 1, 1).date() - DATE_MIN).days: "2021",
-            (_dt(2022, 1, 1).date() - DATE_MIN).days: "2022",
-            (_dt(2023, 1, 1).date() - DATE_MIN).days: "2023"
-        },
-        updatemode="mouseup",
-        tooltip={"placement": "bottom"}
-    ),
-    html.Div(id="start-date-readout", style={"marginBottom": "0.5rem"}),
-    
-    html.Label("Window start time (UTC)"),
-    html.Div([
-        dcc.Input(
-            id="time-input",
-            type="text",
-            value=DEFAULT_TIME.strftime("%H:%M"),
-            placeholder="HH:MM or H",
-            style={"marginRight": "10px", "width": "100px"}
-        ),
-        html.Span(" or use slider below", style={"fontSize": "12px", "color": "gray"}),
-        html.Div("Format: HH:MM, HH:MM:SS, or just H (e.g., 14:30, 14:30:45, 14)", 
-                style={"fontSize": "11px", "color": "gray", "marginTop": "2px"})
-    ], style={"marginBottom": "10px"}),
-    dcc.Slider(
-        id="start-time", 
-        min=0, 
-        max=86399,  # 23:59:59 in seconds
-        step=60,  # 1 minute steps
-        value=DEFAULT_TIME.hour * 3600 + DEFAULT_TIME.minute * 60 + DEFAULT_TIME.second,
-        marks={
-            0: "00:00",
-            1800: "'",
-            3600: "01:00",
-            5400: "'",
-            7200: "02:00",
-            9000: "'",
-            10800: "03:00",
-            12600: "'",
-            14400: "04:00",
-            16200: "'",
-            18000: "05:00",
-            19800: "'",
-            21600: "06:00",
-            23400: "'",
-            25200: "07:00",
-            27000: "'",
-            28800: "08:00",
-            30600: "'",
-            32400: "09:00",
-            34200: "'",
-            36000: "10:00",
-            37800: "'",
-            39600: "11:00",
-            41400: "'",
-            43200: "12:00",
-            45000: "'",
-            46800: "13:00",
-            48600: "'",
-            50400: "14:00",
-            52200: "'",
-            54000: "15:00",
-            55800: "'",
-            57600: "16:00",
-            59400: "'",
-            61200: "17:00",
-            63000: "'",
-            64800: "18:00",
-            66600: "'",
-            68400: "19:00",
-            70200: "'",
-            72000: "20:00",
-            73800: "'",
-            75600: "21:00",
-            77400: "'",
-            79200: "22:00",
-            81000: "'",
-            82800: "23:00",
-            84600: "'",
-            86399: "23:59"
-        },
-        updatemode="mouseup",
-        tooltip={"placement": "bottom"}
-    ),
-    html.Div(id="start-time-readout", style={"marginBottom": "1rem"}),
+        # Controls section with cyberpunk styling
+        html.Div([
+            # Date controls
+            html.Div([
+                html.Label("WINDOW START DATE (UTC)", 
+                          style={
+                              "color": CYBERPUNK_COLORS['neon_green'],
+                              "fontSize": "14px",
+                              "fontWeight": "bold",
+                              "fontFamily": "'Courier New', monospace",
+                              "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_green']}",
+                              "marginBottom": "10px"
+                          }),
+                html.Div([
+                    dcc.DatePickerSingle(
+                        id="date-picker",
+                        date=DEFAULT_DATE,
+                        min_date_allowed=DATE_MIN,
+                        max_date_allowed=DATE_MAX,
+                        display_format="YYYY-MM-DD",
+                        style={
+                            "marginRight": "10px",
+                            "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
+                            "color": CYBERPUNK_COLORS['text_primary'],
+                            "border": f"1px solid {CYBERPUNK_COLORS['neon_green']}",
+                            "borderRadius": "5px"
+                        }
+                    ),
+                    html.Span(" OR USE SLIDER BELOW", 
+                             style={
+                                 "fontSize": "12px", 
+                                 "color": CYBERPUNK_COLORS['text_secondary'],
+                                 "fontFamily": "'Courier New', monospace"
+                             })
+                ], style={"marginBottom": "10px"}),
+                
+                dcc.Slider(
+                    id="start-date", 
+                    min=0, 
+                    max=(DATE_MAX - DATE_MIN).days, 
+                    step=1,
+                    value=(DEFAULT_DATE - DATE_MIN).days, 
+                    marks={
+                        0: "1998",
+                        (_dt(1999, 1, 1).date() - DATE_MIN).days: "1999",
+                        (_dt(2000, 1, 1).date() - DATE_MIN).days: "2000",
+                        (_dt(2001, 1, 1).date() - DATE_MIN).days: "2001",
+                        (_dt(2002, 1, 1).date() - DATE_MIN).days: "2002",
+                        (_dt(2003, 1, 1).date() - DATE_MIN).days: "2003",
+                        (_dt(2004, 1, 1).date() - DATE_MIN).days: "2004",
+                        (_dt(2005, 1, 1).date() - DATE_MIN).days: "2005",
+                        (_dt(2006, 1, 1).date() - DATE_MIN).days: "2006",
+                        (_dt(2007, 1, 1).date() - DATE_MIN).days: "2007",
+                        (_dt(2008, 1, 1).date() - DATE_MIN).days: "2008",
+                        (_dt(2009, 1, 1).date() - DATE_MIN).days: "2009",
+                        (_dt(2010, 1, 1).date() - DATE_MIN).days: "2010",
+                        (_dt(2011, 1, 1).date() - DATE_MIN).days: "2011",
+                        (_dt(2012, 1, 1).date() - DATE_MIN).days: "2012",
+                        (_dt(2013, 1, 1).date() - DATE_MIN).days: "2013",
+                        (_dt(2014, 1, 1).date() - DATE_MIN).days: "2014",
+                        (_dt(2015, 1, 1).date() - DATE_MIN).days: "2015",
+                        (_dt(2016, 1, 1).date() - DATE_MIN).days: "2016",
+                        (_dt(2017, 1, 1).date() - DATE_MIN).days: "2017",
+                        (_dt(2018, 1, 1).date() - DATE_MIN).days: "2018",
+                        (_dt(2019, 1, 1).date() - DATE_MIN).days: "2019",
+                        (_dt(2020, 1, 1).date() - DATE_MIN).days: "2020",
+                        (_dt(2021, 1, 1).date() - DATE_MIN).days: "2021",
+                        (_dt(2022, 1, 1).date() - DATE_MIN).days: "2022",
+                        (_dt(2023, 1, 1).date() - DATE_MIN).days: "2023"
+                    },
+                    updatemode="mouseup",
+                    tooltip={"placement": "bottom"}
+                ),
+                html.Div(id="start-date-readout", style={"marginBottom": "0.5rem", "color": CYBERPUNK_COLORS['neon_green']}),
+            ], style={"marginBottom": "20px"}),
+            
+            # Time controls
+            html.Div([
+                html.Label("WINDOW START TIME (UTC)", 
+                          style={
+                              "color": CYBERPUNK_COLORS['neon_yellow'],
+                              "fontSize": "14px",
+                              "fontWeight": "bold",
+                              "fontFamily": "'Courier New', monospace",
+                              "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_yellow']}",
+                              "marginBottom": "10px"
+                          }),
+                html.Div([
+                    dcc.Input(
+                        id="time-input",
+                        type="text",
+                        value=DEFAULT_TIME.strftime("%H:%M"),
+                        placeholder="HH:MM or H",
+                        style={
+                            "marginRight": "10px", 
+                            "width": "100px",
+                            "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
+                            "color": CYBERPUNK_COLORS['text_primary'],
+                            "border": f"1px solid {CYBERPUNK_COLORS['neon_yellow']}",
+                            "borderRadius": "5px",
+                            "fontFamily": "'Courier New', monospace"
+                        }
+                    ),
+                    html.Span(" OR USE SLIDER BELOW", 
+                             style={
+                                 "fontSize": "12px", 
+                                 "color": CYBERPUNK_COLORS['text_secondary'],
+                                 "fontFamily": "'Courier New', monospace"
+                             }),
+                    html.Div("FORMAT: HH:MM, HH:MM:SS, OR JUST H (E.G., 14:30, 14:30:45, 14)", 
+                            style={
+                                "fontSize": "11px", 
+                                "color": CYBERPUNK_COLORS['text_secondary'],
+                                "marginTop": "2px",
+                                "fontFamily": "'Courier New', monospace"
+                            })
+                ], style={"marginBottom": "10px"}),
+                
+                dcc.Slider(
+                    id="start-time", 
+                    min=0, 
+                    max=86399,  # 23:59:59 in seconds
+                    step=60,  # 1 minute steps
+                    value=DEFAULT_TIME.hour * 3600 + DEFAULT_TIME.minute * 60 + DEFAULT_TIME.second,
+                    marks={
+                        0: "00:00",
+                        1800: "'",
+                        3600: "01:00",
+                        5400: "'",
+                        7200: "02:00",
+                        9000: "'",
+                        10800: "03:00",
+                        12600: "'",
+                        14400: "04:00",
+                        16200: "'",
+                        18000: "05:00",
+                        19800: "'",
+                        21600: "06:00",
+                        23400: "'",
+                        25200: "07:00",
+                        27000: "'",
+                        28800: "08:00",
+                        30600: "'",
+                        32400: "09:00",
+                        34200: "'",
+                        36000: "10:00",
+                        37800: "'",
+                        39600: "11:00",
+                        41400: "'",
+                        43200: "12:00",
+                        45000: "'",
+                        46800: "13:00",
+                        48600: "'",
+                        50400: "14:00",
+                        52200: "'",
+                        54000: "15:00",
+                        55800: "'",
+                        57600: "16:00",
+                        59400: "'",
+                        61200: "17:00",
+                        63000: "'",
+                        64800: "18:00",
+                        66600: "'",
+                        68400: "19:00",
+                        70200: "'",
+                        72000: "20:00",
+                        73800: "'",
+                        75600: "21:00",
+                        77400: "'",
+                        79200: "22:00",
+                        81000: "'",
+                        82800: "23:00",
+                        84600: "'",
+                        86399: "23:59"
+                    },
+                    updatemode="mouseup",
+                    tooltip={"placement": "bottom"}
+                ),
+                html.Div(id="start-time-readout", style={"marginBottom": "1rem", "color": CYBERPUNK_COLORS['neon_yellow']}),
+            ], style={"marginBottom": "20px"}),
 
-    html.Label("Window length (s)"),
-    html.Div([
-        dcc.Input(
-            id="window-length-input",
-            type="text",
-            value=15000,  # 4 hours 10 minutes
-            placeholder="seconds (60-2592000)",
-            style={"marginRight": "10px", "width": "120px"}
-        ),
-        html.Span(" seconds or use slider below", style={"fontSize": "12px", "color": "gray"}),
-        html.Div("Enter seconds (60 to 19,872,000)", 
-                style={"fontSize": "11px", "color": "gray", "marginTop": "2px"})
-    ], style={"marginBottom": "10px"}),
-    dcc.Slider(
-        id="len", min=LEN_MIN_S, max=LEN_MAX_S, step=60, value=15000,  # 4 hours 10 minutes
-        marks={
-            60: "1m",
-            43200: "12h",
-            86400: "1d",
-            172800: "2d",
-            259200: "3d",
-            604800: "1w",
-            1209600: "2w",
-            1814400: "3w",
-            2592000: "30d",
-            7776000: "90d",
-            15552000: "180d",
-            19872000: "230d"
-        },
-        updatemode="mouseup", tooltip={"placement": "bottom"}
-    ),
-    html.Div(id="len-readout", style={"marginBottom": "1rem"}),
+            # Window length controls
+            html.Div([
+                html.Label("WINDOW LENGTH (SECONDS)", 
+                          style={
+                              "color": CYBERPUNK_COLORS['neon_purple'],
+                              "fontSize": "14px",
+                              "fontWeight": "bold",
+                              "fontFamily": "'Courier New', monospace",
+                              "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_purple']}",
+                              "marginBottom": "10px"
+                          }),
+                html.Div([
+                    dcc.Input(
+                        id="window-length-input",
+                        type="text",
+                        value=15000,  # 4 hours 10 minutes
+                        placeholder="seconds (60-2592000)",
+                        style={
+                            "marginRight": "10px", 
+                            "width": "120px",
+                            "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
+                            "color": CYBERPUNK_COLORS['text_primary'],
+                            "border": f"1px solid {CYBERPUNK_COLORS['neon_purple']}",
+                            "borderRadius": "5px",
+                            "fontFamily": "'Courier New', monospace"
+                        }
+                    ),
+                    html.Span(" SECONDS OR USE SLIDER BELOW", 
+                             style={
+                                 "fontSize": "12px", 
+                                 "color": CYBERPUNK_COLORS['text_secondary'],
+                                 "fontFamily": "'Courier New', monospace"
+                             }),
+                    html.Div("ENTER SECONDS (60 TO 19,872,000)", 
+                            style={
+                                "fontSize": "11px", 
+                                "color": CYBERPUNK_COLORS['text_secondary'],
+                                "marginTop": "2px",
+                                "fontFamily": "'Courier New', monospace"
+                            })
+                ], style={"marginBottom": "10px"}),
+                
+                dcc.Slider(
+                    id="len", 
+                    min=LEN_MIN_S, 
+                    max=LEN_MAX_S, 
+                    step=60, 
+                    value=15000,  # 4 hours 10 minutes
+                    marks={
+                        60: "1m",
+                        43200: "12h",
+                        86400: "1d",
+                        172800: "2d",
+                        259200: "3d",
+                        604800: "1w",
+                        1209600: "2w",
+                        1814400: "3w",
+                        2592000: "30d",
+                        7776000: "90d",
+                        15552000: "180d",
+                        19872000: "230d"
+                    },
+                    updatemode="mouseup", 
+                    tooltip={"placement": "bottom"}
+                ),
+                html.Div(id="len-readout", style={"marginBottom": "1rem", "color": CYBERPUNK_COLORS['neon_purple']}),
+            ], style={"marginBottom": "20px"}),
 
-    html.Label("Bin count"),
-    html.Div([
-        dcc.Input(
-            id="bin-count-input",
-            type="text",
-            value=15000,
-            placeholder="bins (1-30000)",
-            style={"marginRight": "10px", "width": "80px"}
-        ),
-        html.Span(" bins or use slider below", style={"fontSize": "12px", "color": "gray"}),
-        html.Div("Enter number of bins (1 to 30,000)", 
-                style={"fontSize": "11px", "color": "gray", "marginTop": "2px"})
-    ], style={"marginBottom": "10px"}),
-    dcc.Slider(
-        id="bins", min=BINS_MIN, max=BINS_MAX, step=1, value=15000,
-        marks={
-            1: "1",
-            100: "100",
-            500: "500",
-            1000: "1K",
-            5000: "5K",
-            10000: "10K",
-            15000: "15K",
-            20000: "20K",
-            25000: "25K",
-            30000: "30K"
-        },
-        updatemode="mouseup", tooltip={"placement": "bottom"}
-    ),
-    html.Div(id="bins-readout"),
-    
-    # Status indicator
-    html.Div(id="status-indicator", style={"marginTop": "10px", "fontSize": "12px", "color": "gray"})
-])
+            # Bin count controls
+            html.Div([
+                html.Label("BIN COUNT", 
+                          style={
+                              "color": CYBERPUNK_COLORS['neon_pink'],
+                              "fontSize": "14px",
+                              "fontWeight": "bold",
+                              "fontFamily": "'Courier New', monospace",
+                              "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_pink']}",
+                              "marginBottom": "10px"
+                          }),
+                html.Div([
+                    dcc.Input(
+                        id="bin-count-input",
+                        type="text",
+                        value=15000,
+                        placeholder="bins (1-30000)",
+                        style={
+                            "marginRight": "10px", 
+                            "width": "80px",
+                            "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
+                            "color": CYBERPUNK_COLORS['text_primary'],
+                            "border": f"1px solid {CYBERPUNK_COLORS['neon_pink']}",
+                            "borderRadius": "5px",
+                            "fontFamily": "'Courier New', monospace"
+                        }
+                    ),
+                    html.Span(" BINS OR USE SLIDER BELOW", 
+                             style={
+                                 "fontSize": "12px", 
+                                 "color": CYBERPUNK_COLORS['text_secondary'],
+                                 "fontFamily": "'Courier New', monospace"
+                             }),
+                    html.Div("ENTER NUMBER OF BINS (1 TO 30,000)", 
+                            style={
+                                "fontSize": "11px", 
+                                "color": CYBERPUNK_COLORS['text_secondary'],
+                                "marginTop": "2px",
+                                "fontFamily": "'Courier New', monospace"
+                            })
+                ], style={"marginBottom": "10px"}),
+                
+                dcc.Slider(
+                    id="bins", 
+                    min=BINS_MIN, 
+                    max=BINS_MAX, 
+                    step=1, 
+                    value=15000,
+                    marks={
+                        1: "1",
+                        100: "100",
+                        500: "500",
+                        1000: "1K",
+                        5000: "5K",
+                        10000: "10K",
+                        15000: "15K",
+                        20000: "20K",
+                        25000: "25K",
+                        30000: "30K"
+                    },
+                    updatemode="mouseup", 
+                    tooltip={"placement": "bottom"}
+                ),
+                html.Div(id="bins-readout", style={"color": CYBERPUNK_COLORS['neon_pink']}),
+            ], style={"marginBottom": "20px"}),
+            
+            # Status indicator
+            html.Div(id="status-indicator", 
+                    style={
+                        "marginTop": "10px", 
+                        "fontSize": "12px", 
+                        "color": CYBERPUNK_COLORS['neon_cyan'],
+                        "fontFamily": "'Courier New', monospace",
+                        "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_cyan']}"
+                    })
+        ], style={
+            "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
+            "padding": "20px",
+            "borderRadius": "15px",
+            "border": f"2px solid {CYBERPUNK_COLORS['neon_cyan']}",
+            "boxShadow": f"0 0 30px {CYBERPUNK_COLORS['neon_cyan']}40"
+        })
+    ], style={
+        "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
+        "minHeight": "100vh",
+        "padding": "20px",
+        "fontFamily": "'Courier New', monospace"
+    })
+], style={
+    "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
+    "minHeight": "100vh"
+})
 
 # ───────────────────────────── callback ────────────────────────────────────
 @app.callback(
@@ -608,12 +812,23 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
             title=dict(
                 text=f"GCP EGG Statistical Analysis<br><sub>No data found • {elapsed_time:.2f}s</sub>",
                 x=0.5,
-                xanchor="center"
+                xanchor="center",
+                font=dict(color=CYBERPUNK_COLORS['neon_pink'])
             ),
             xaxis_title="Minutes from window start",
             yaxis_title="Cumulative χ²",
-            annotations=[dict(text="No data in selected window", showarrow=False)],
-            margin=dict(l=40, r=40, t=60, b=40)
+            annotations=[dict(
+                text="No data in selected window", 
+                showarrow=False,
+                font=dict(color=CYBERPUNK_COLORS['neon_cyan'])
+            )],
+            margin=dict(l=40, r=40, t=60, b=40),
+            plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+            paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+            font=dict(
+                color=CYBERPUNK_COLORS['text_primary'],
+                family="'Courier New', monospace"
+            )
         )
         
         # Get data range info for status string
@@ -652,20 +867,50 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     # Create single-axis plot for cumulative deviation of χ² based on Stouffer Z
     fig = go.Figure()
     
-    # Add cumulative deviation trace
+    # Add cumulative deviation trace with cyberpunk styling
     fig.add_trace(go.Scatter(
         x=x, 
         y=df["cum_stouffer_z"], 
         mode="lines",
         name="Cumulative deviation of χ² based on Stouffer Z",
-        line=dict(color="purple")
+        line=dict(
+            color=CYBERPUNK_COLORS['neon_purple'],
+            width=3,
+            shape='spline'
+        )
     ))
     
+    # Cyberpunk-styled layout
     fig.update_layout(
         xaxis_title=f"Time from window start ({time_unit})",
         yaxis_title="Cumulative deviation of χ² based on Stouffer Z",
         margin=dict(l=40, r=40, t=60, b=40),
-        legend=dict(x=0.02, y=0.98)
+        legend=dict(
+            x=0.02, 
+            y=0.98,
+            bgcolor=CYBERPUNK_COLORS['bg_dark'],
+            bordercolor=CYBERPUNK_COLORS['neon_purple'],
+            borderwidth=1,
+            font=dict(color=CYBERPUNK_COLORS['text_primary'])
+        ),
+        plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+        paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+        font=dict(
+            color=CYBERPUNK_COLORS['text_primary'],
+            family="'Courier New', monospace"
+        ),
+        xaxis=dict(
+            gridcolor=CYBERPUNK_COLORS['bg_medium'],
+            zerolinecolor=CYBERPUNK_COLORS['neon_cyan'],
+            title_font=dict(color=CYBERPUNK_COLORS['neon_cyan']),
+            tickfont=dict(color=CYBERPUNK_COLORS['text_secondary'])
+        ),
+        yaxis=dict(
+            gridcolor=CYBERPUNK_COLORS['bg_medium'],
+            zerolinecolor=CYBERPUNK_COLORS['neon_cyan'],
+            title_font=dict(color=CYBERPUNK_COLORS['neon_cyan']),
+            tickfont=dict(color=CYBERPUNK_COLORS['text_secondary'])
+        )
     )
     
     start_date_str = f"Date: {selected_date.strftime('%Y-%m-%d')}"
