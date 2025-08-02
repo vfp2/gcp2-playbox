@@ -33,9 +33,9 @@ GCP_DATASET  = os.getenv("GCP_DATASET", "eggs_us")
 GCP_TABLE    = os.getenv("GCP_TABLE", "basket")          # raw second-level table
 BASELINE_TBL = os.getenv("BASELINE_TABLE", "baseline_individual")
 
-# Date range for sliders (3rd Aug 1998 to 25 Aug 2023)
+# Date range for sliders (3rd Aug 1998 to 31 July 2025)
 DATE_MIN = _dt(1998, 8, 3, tzinfo=_tz.utc).date()
-DATE_MAX = _dt(2023, 8, 25, tzinfo=_tz.utc).date()
+DATE_MAX = _dt(2025, 7, 31, tzinfo=_tz.utc).date()
 # Default to start of 911 Nelson experiment (first plane hit WTC at 8:46 AM EDT = 12:46 PM UTC)
 DEFAULT_DATE = _dt(2001, 9, 11, tzinfo=_tz.utc).date()
 DEFAULT_TIME = _dt(2001, 9, 11, 12, 35, 0, tzinfo=_tz.utc).time()  # 8:35 AM EDT = 12:35 PM UTC
@@ -541,7 +541,9 @@ app.layout = html.Div([
                         (_dt(2020, 1, 1).date() - DATE_MIN).days: "2020",
                         (_dt(2021, 1, 1).date() - DATE_MIN).days: "2021",
                         (_dt(2022, 1, 1).date() - DATE_MIN).days: "2022",
-                        (_dt(2023, 1, 1).date() - DATE_MIN).days: "2023"
+                        (_dt(2023, 1, 1).date() - DATE_MIN).days: "2023",
+                        (_dt(2024, 1, 1).date() - DATE_MIN).days: "2024",
+                        (_dt(2025, 1, 1).date() - DATE_MIN).days: "2025"
                     },
                     updatemode="mouseup",
                     tooltip={"placement": "bottom"},
