@@ -260,6 +260,124 @@ def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
 app = dash.Dash(__name__)
 app.title = "GCP EGG Statistical Analysis Explorer"
 
+# Add CSS for pulsing slider animations
+app.index_string = '''
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+        <style>
+            @keyframes dateSliderPulse {
+                0% { background: linear-gradient(90deg, #ff006e 0%, #ff6b9d 50%, #ff9ecd 100%); }
+                25% { background: linear-gradient(90deg, #ff6b9d 0%, #ff9ecd 50%, #ff006e 100%); }
+                50% { background: linear-gradient(90deg, #ff9ecd 0%, #ff006e 50%, #ff6b9d 100%); }
+                75% { background: linear-gradient(90deg, #ff006e 0%, #ff6b9d 50%, #ff9ecd 100%); }
+                100% { background: linear-gradient(90deg, #ff006e 0%, #ff6b9d 50%, #ff9ecd 100%); }
+            }
+            
+            @keyframes timeSliderPulse {
+                0% { background: linear-gradient(90deg, #00d4ff 0%, #4de6ff 50%, #99f2ff 100%); }
+                25% { background: linear-gradient(90deg, #4de6ff 0%, #99f2ff 50%, #00d4ff 100%); }
+                50% { background: linear-gradient(90deg, #99f2ff 0%, #00d4ff 50%, #4de6ff 100%); }
+                75% { background: linear-gradient(90deg, #00d4ff 0%, #4de6ff 50%, #99f2ff 100%); }
+                100% { background: linear-gradient(90deg, #00d4ff 0%, #4de6ff 50%, #99f2ff 100%); }
+            }
+            
+            @keyframes lengthSliderPulse {
+                0% { background: linear-gradient(90deg, #9d4edd 0%, #b366e6 50%, #c980ef 100%); }
+                25% { background: linear-gradient(90deg, #b366e6 0%, #c980ef 50%, #9d4edd 100%); }
+                50% { background: linear-gradient(90deg, #c980ef 0%, #9d4edd 50%, #b366e6 100%); }
+                75% { background: linear-gradient(90deg, #9d4edd 0%, #b366e6 50%, #c980ef 100%); }
+                100% { background: linear-gradient(90deg, #9d4edd 0%, #b366e6 50%, #c980ef 100%); }
+            }
+            
+            @keyframes binsSliderPulse {
+                0% { background: linear-gradient(90deg, #00ff88 0%, #4dffa3 50%, #99ffbe 100%); }
+                25% { background: linear-gradient(90deg, #4dffa3 0%, #99ffbe 50%, #00ff88 100%); }
+                50% { background: linear-gradient(90deg, #99ffbe 0%, #00ff88 50%, #4dffa3 100%); }
+                75% { background: linear-gradient(90deg, #00ff88 0%, #4dffa3 50%, #99ffbe 100%); }
+                100% { background: linear-gradient(90deg, #00ff88 0%, #4dffa3 50%, #99ffbe 100%); }
+            }
+            
+            .date-slider .rc-slider-track {
+                animation: dateSliderPulse 3s ease-in-out infinite;
+                box-shadow: 0 0 15px rgba(255, 0, 110, 0.6);
+            }
+            
+            .time-slider .rc-slider-track {
+                animation: timeSliderPulse 2.5s ease-in-out infinite;
+                box-shadow: 0 0 15px rgba(0, 212, 255, 0.6);
+            }
+            
+            .length-slider .rc-slider-track {
+                animation: lengthSliderPulse 3.5s ease-in-out infinite;
+                box-shadow: 0 0 15px rgba(157, 78, 221, 0.6);
+            }
+            
+            .bins-slider .rc-slider-track {
+                animation: binsSliderPulse 2s ease-in-out infinite;
+                box-shadow: 0 0 15px rgba(0, 255, 136, 0.6);
+            }
+            
+            .date-slider .rc-slider-handle {
+                background: #ff006e !important;
+                border: 2px solid #ff006e !important;
+                box-shadow: 0 0 10px rgba(255, 0, 110, 0.8) !important;
+            }
+            
+            .time-slider .rc-slider-handle {
+                background: #00d4ff !important;
+                border: 2px solid #00d4ff !important;
+                box-shadow: 0 0 10px rgba(0, 212, 255, 0.8) !important;
+            }
+            
+            .length-slider .rc-slider-handle {
+                background: #9d4edd !important;
+                border: 2px solid #9d4edd !important;
+                box-shadow: 0 0 10px rgba(157, 78, 221, 0.8) !important;
+            }
+            
+            .bins-slider .rc-slider-handle {
+                background: #00ff88 !important;
+                border: 2px solid #00ff88 !important;
+                box-shadow: 0 0 10px rgba(0, 255, 136, 0.8) !important;
+            }
+            
+            .date-slider .rc-slider-handle:hover {
+                transform: scale(1.2);
+                box-shadow: 0 0 20px rgba(255, 0, 110, 1) !important;
+            }
+            
+            .time-slider .rc-slider-handle:hover {
+                transform: scale(1.2);
+                box-shadow: 0 0 20px rgba(0, 212, 255, 1) !important;
+            }
+            
+            .length-slider .rc-slider-handle:hover {
+                transform: scale(1.2);
+                box-shadow: 0 0 20px rgba(157, 78, 221, 1) !important;
+            }
+            
+            .bins-slider .rc-slider-handle:hover {
+                transform: scale(1.2);
+                box-shadow: 0 0 20px rgba(0, 255, 136, 1) !important;
+            }
+        </style>
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+'''
+
 # Cyberpunk psychedelic color scheme
 CYBERPUNK_COLORS = {
     'bg_dark': '#0a0a0f',
@@ -273,6 +391,26 @@ CYBERPUNK_COLORS = {
     'text_primary': '#ffffff',
     'text_secondary': '#b8b8b8',
     'accent_gradient': 'linear-gradient(135deg, #ff006e 0%, #9d4edd 50%, #00d4ff 100%)'
+}
+
+# Game-like pulsing color animations for sliders
+SLIDER_ANIMATIONS = {
+    'date_slider': {
+        'colors': ['#ff006e', '#ff6b9d', '#ff9ecd', '#ff006e'],  # Pink to light pink cycle
+        'duration': '3s'
+    },
+    'time_slider': {
+        'colors': ['#00d4ff', '#4de6ff', '#99f2ff', '#00d4ff'],  # Cyan to light cyan cycle
+        'duration': '2.5s'
+    },
+    'length_slider': {
+        'colors': ['#9d4edd', '#b366e6', '#c980ef', '#9d4edd'],  # Purple to light purple cycle
+        'duration': '3.5s'
+    },
+    'bins_slider': {
+        'colors': ['#00ff88', '#4dffa3', '#99ffbe', '#00ff88'],  # Green to light green cycle
+        'duration': '2s'
+    }
 }
 
 app.layout = html.Div([
@@ -402,7 +540,8 @@ app.layout = html.Div([
                         (_dt(2023, 1, 1).date() - DATE_MIN).days: "2023"
                     },
                     updatemode="mouseup",
-                    tooltip={"placement": "bottom"}
+                    tooltip={"placement": "bottom"},
+                    className="date-slider"
                 ),
                 html.Div(id="start-date-readout", style={"marginBottom": "0.5rem", "color": CYBERPUNK_COLORS['neon_green']}),
             ], style={"marginBottom": "20px"}),
@@ -507,7 +646,8 @@ app.layout = html.Div([
                         86399: "23:59"
                     },
                     updatemode="mouseup",
-                    tooltip={"placement": "bottom"}
+                    tooltip={"placement": "bottom"},
+                    className="time-slider"
                 ),
                 html.Div(id="start-time-readout", style={"marginBottom": "1rem", "color": CYBERPUNK_COLORS['neon_yellow']}),
             ], style={"marginBottom": "20px"}),
@@ -575,7 +715,8 @@ app.layout = html.Div([
                         19872000: "230d"
                     },
                     updatemode="mouseup", 
-                    tooltip={"placement": "bottom"}
+                    tooltip={"placement": "bottom"},
+                    className="length-slider"
                 ),
                 html.Div(id="len-readout", style={"marginBottom": "1rem", "color": CYBERPUNK_COLORS['neon_purple']}),
             ], style={"marginBottom": "20px"}),
@@ -641,7 +782,8 @@ app.layout = html.Div([
                         30000: "30K"
                     },
                     updatemode="mouseup", 
-                    tooltip={"placement": "bottom"}
+                    tooltip={"placement": "bottom"},
+                    className="bins-slider"
                 ),
                 html.Div(id="bins-readout", style={"color": CYBERPUNK_COLORS['neon_pink']}),
             ], style={"marginBottom": "20px"}),
