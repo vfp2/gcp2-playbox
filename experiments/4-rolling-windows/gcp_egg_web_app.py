@@ -367,6 +367,20 @@ app.index_string = '''
             
             .bins-slider .rc-slider-handle:hover {
                 transform: scale(1.2);
+            }
+            
+            /* Cache clear button hover effects */
+            #clear-cache-btn:hover {
+                background-color: #ffbe0b !important;
+                color: #000000 !important;
+                box-shadow: 0 0 20px rgba(255, 190, 11, 0.8) !important;
+                transform: scale(1.05);
+            }
+            
+            #clear-cache-btn:active {
+                transform: scale(0.95);
+                box-shadow: 0 0 15px rgba(255, 190, 11, 0.6) !important;
+            }
                 box-shadow: 0 0 20px rgba(157, 78, 221, 1) !important;
             }
         </style>
@@ -802,7 +816,31 @@ app.layout = html.Div([
                         "color": CYBERPUNK_COLORS['neon_cyan'],
                         "fontFamily": "'Courier New', monospace",
                         "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_cyan']}"
-                    })
+                    }),
+            
+            # Cache control button
+            html.Div([
+                html.Button(
+                    "CLEAR CACHE & REFRESH",
+                    id="clear-cache-btn",
+                    n_clicks=0,
+                    style={
+                        "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
+                        "color": CYBERPUNK_COLORS['neon_yellow'],
+                        "border": f"2px solid {CYBERPUNK_COLORS['neon_yellow']}",
+                        "borderRadius": "8px",
+                        "padding": "10px 20px",
+                        "fontSize": "14px",
+                        "fontWeight": "bold",
+                        "fontFamily": "'Courier New', monospace",
+                        "cursor": "pointer",
+                        "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_yellow']}",
+                        "boxShadow": f"0 0 10px {CYBERPUNK_COLORS['neon_yellow']}30",
+                        "marginTop": "15px",
+                        "transition": "all 0.3s ease"
+                    }
+                )
+            ], style={"textAlign": "center"})
         ], style={
             "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
             "padding": "20px",
@@ -838,10 +876,11 @@ app.layout = html.Div([
     Output("len", "value"),
     Output("bins", "value"),
     Input("start-date", "value"), Input("start-time", "value"), Input("len", "value"), Input("bins", "value"),
-    Input("date-picker", "date"), Input("time-input", "value"), Input("window-length-input", "value"), Input("bin-count-input", "value")
+    Input("date-picker", "date"), Input("time-input", "value"), Input("window-length-input", "value"), Input("bin-count-input", "value"),
+    Input("clear-cache-btn", "n_clicks")
 )
 def update_graph(start_date_days, start_time_seconds, window_len, bins, 
-                date_picker, time_input, window_length_input, bin_count_input):
+                date_picker, time_input, window_length_input, bin_count_input, clear_cache_clicks):
     import time
     from dash import ctx
     
@@ -849,6 +888,12 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     
     # Determine which input triggered the callback and use that value
     triggered_id = ctx.triggered_id if ctx.triggered else None
+    
+    # Handle cache clearing
+    if triggered_id == "clear-cache-btn" and clear_cache_clicks and clear_cache_clicks > 0:
+        # Clear the BigQuery cache
+        CACHE.clear()
+        print(f"BigQuery cache cleared at {_dt.now()}")
     
     # Initialize values with defaults
     start_date_days = int(start_date_days or 0)
@@ -1083,10 +1128,12 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     # Get data range info for status string
     first_date_str, last_date_str, total_count = get_data_range_info()
     
-    if is_cached:
-        status_str = f"✓ Cached data loaded in {elapsed_time:.2f}s | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+    if triggered_id == "clear-cache-btn" and clear_cache_clicks and clear_cache_clicks > 0:
+        status_str = f"Cache cleared! BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+    elif is_cached:
+        status_str = f"Cached data loaded in {elapsed_time:.2f}s | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
     else:
-        status_str = f"🔄 BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+        status_str = f"BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
     
     # Return all outputs including the input components for synchronization
     return (fig, start_date_str, start_time_str, len_str, bins_str, status_str,
