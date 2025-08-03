@@ -2,13 +2,14 @@
 Dash web application to explore Global Consciousness Project (GCP) EGG data
 stored in BigQuery and reproduce Nelson-style statistical analysis.
 
-* Full egg list ({len(EGG_COLS)} columns)
+* Filtered egg list ({len(EGG_COLS_FILTERED)} columns, excludes {len(BROKEN_EGGS)} broken eggs)
 * Implements correct GCP methodology:
   1. Stouffer Z across eggs: Z_t(s) = ΣZ_i/√N (dynamic N based on active eggs)
   2. χ² based on Stouffer Z: (Z_t(s))² (distributed as χ²(1) under null hypothesis)
   3. Cumulative deviation: Σ((Z_t(s))² - 1) to detect departure from randomness
 * Uses published expected values: μ=100, σ=7.0712
 * Handles missing egg data by dynamically adjusting N in Stouffer Z calculation
+* Excludes broken eggs with constant output (zero variance) that cause systematic bias
 * Guards against division-by-zero and empty windows
 * Live slider read-outs
 * Sliders fire the callback only on mouse-up
@@ -70,24 +71,33 @@ EGG_COLS = [
   "egg_4251"
 ]
 
+# Filtered egg columns excluding broken eggs (constant output = 0, Z-score = -14.1419)
+# Based on analysis of 2011-03-11 data showing these eggs have zero variance
+BROKEN_EGGS = [
+    "egg_2088", "egg_2249", "egg_2243", "egg_2236", 
+    "egg_2047", "egg_2024", "egg_2002", "egg_1237"
+]
+
+EGG_COLS_FILTERED = [egg for egg in EGG_COLS if egg not in BROKEN_EGGS]
+
 # ───────────────────────────── SQL builder ────────────────────────────────
 def build_sql() -> str:
-    ascii_block = ",\n".join(f"    ASCII({c}) AS {c}" for c in EGG_COLS)  # still used in raw CTE, keeps query readable
+    ascii_block = ",\n".join(f"    ASCII({c}) AS {c}" for c in EGG_COLS_FILTERED)  # still used in raw CTE, keeps query readable
     
     # Use published expected values: μ=100, σ=7.0712
     # Keep ASCII conversion as requested
     # Only calculate Z-scores for eggs with non-NULL data
     z_block_terms = []
-    for c in EGG_COLS:
+    for c in EGG_COLS_FILTERED:
         z_block_terms.append(f"    IF({c} IS NOT NULL, SAFE_DIVIDE(({c} - 100), 7.0712), NULL) AS z_{c}")
     z_block = ",\n".join(z_block_terms)
     
     # Count non-null eggs for dynamic N calculation
-    null_count_block = " + ".join(f"IF(z_{c} IS NULL, 0, 1)" for c in EGG_COLS)
+    null_count_block = " + ".join(f"IF(z_{c} IS NULL, 0, 1)" for c in EGG_COLS_FILTERED)
     
     # Calculate Stouffer Z with dynamic N (only include non-null eggs)
     stouffer_z_terms = []
-    for c in EGG_COLS:
+    for c in EGG_COLS_FILTERED:
         stouffer_z_terms.append(f"IF(z_{c} IS NOT NULL, z_{c}, 0)")
     stouffer_z_sum = " + ".join(stouffer_z_terms)
     stouffer_z = f"SAFE_DIVIDE({stouffer_z_sum}, SQRT({null_count_block})) AS stouffer_z"
@@ -1122,7 +1132,7 @@ def update_graph(start_date_days, start_time_seconds, window_len, bins,
     else:
         bin_duration_str = f"{bin_duration/86400:.1f}d"
     
-    bins_str  = f"Bins: {bins} (≈ {bin_duration_str}/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS)} | Method: (Stouffer Z)² - 1"
+    bins_str  = f"Bins: {bins} (≈ {bin_duration_str}/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS_FILTERED)} | Method: (Stouffer Z)² - 1"
     
     # Status indicator with more details
     # Get data range info for status string
