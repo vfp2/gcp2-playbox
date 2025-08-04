@@ -577,4 +577,4 @@ if __name__ == "__main__":
     print("Financial Analysis: http://localhost:8050/experiment-6")
     print("Neural interface online...")
     
-    app.run_server(debug=True, host="0.0.0.0", port=8050)
+    app.run(debug=True, host="0.0.0.0", port=8050)
