@@ -39,13 +39,13 @@ DATE_MIN = _dt(1998, 8, 3, tzinfo=_tz.utc).date()
 DATE_MAX = _dt(2025, 7, 31, tzinfo=_tz.utc).date()
 # Default to start of 911 Nelson experiment (first plane hit WTC at 8:46 AM EDT = 12:46 PM UTC)
 DEFAULT_DATE = _dt(2011, 3, 11, tzinfo=_tz.utc).date()
-DEFAULT_TIME = _dt(2011, 3, 11, 5, 00, 0, tzinfo=_tz.utc).time()  # 8:35 AM EDT = 12:35 PM UTC
+DEFAULT_TIME = _dt(2011, 3, 11, 5, 36, 0, tzinfo=_tz.utc).time()  # 2:46 PM JST = 05:36 AM UTC
 #DEFAULT_DATE = _dt(2001, 9, 11, tzinfo=_tz.utc).date()
 #DEFAULT_TIME = _dt(2001, 9, 11, 12, 35, 0, tzinfo=_tz.utc).time()  # 8:35 AM EDT = 12:35 PM UTC
-DEFAULT_WINDOW_LEN = 3600  # 1 hour default window
-DEFAULT_BINS = 3600        # 1 hour default bins
-# DEFAULT_WINDOW_LEN = 15000
-# DEFAULT_BINS = 15000
+# DEFAULT_WINDOW_LEN = 3600  # 1 hour default window
+# DEFAULT_BINS = 3600        # 1 hour default bins
+DEFAULT_WINDOW_LEN = 15000
+DEFAULT_BINS = 15000
 LEN_MIN_S, LEN_MAX_S = 60, 230 * 24 * 3600                # 1 min – 230 days
 BINS_MIN, BINS_MAX   = 1, 30000
 
@@ -778,7 +778,7 @@ app.layout = html.Div([
                     dcc.Input(
                         id="bin-count-input",
                         type="text",
-                        value=15000,
+                        value=DEFAULT_BINS,
                         placeholder="bins (1-30000)",
                         style={
                             "marginRight": "10px", 
@@ -810,7 +810,7 @@ app.layout = html.Div([
                     min=BINS_MIN, 
                     max=BINS_MAX, 
                     step=1, 
-                    value=15000,
+                    value=DEFAULT_BINS,
                     marks={
                         1: "1",
                         100: "100",
