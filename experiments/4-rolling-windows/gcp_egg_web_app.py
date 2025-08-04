@@ -47,7 +47,10 @@ DEFAULT_TIME = _dt(2001, 9, 11, 12, 35, 0, tzinfo=_tz.utc).time()  # 8:35 AM EDT
 # DEFAULT_BINS = 3600        # 1 hour default bins
 DEFAULT_WINDOW_LEN = 15000
 DEFAULT_BINS = 15000
-LEN_MIN_S, LEN_MAX_S = 60, 230 * 24 * 3600                # 1 min – 230 days
+
+# Set default window length limits (will be updated by callback)
+LEN_MIN_S, LEN_MAX_S = 60, 90 * 24 * 3600                     # Default: 1 min – 90 days (3 months)
+
 BINS_MIN, BINS_MAX   = 1, 30000
 
 CACHE = dc.Cache("./bq_cache", size_limit=2 * 1024**3)
@@ -461,6 +464,9 @@ SLIDER_ANIMATIONS = {
 }
 
 app.layout = html.Div([
+    # Location component to capture URL parameters
+    dcc.Location(id='url', refresh=False),
+    
     # Main container with cyberpunk styling
     html.Div([
         # Header with glowing effect
@@ -801,7 +807,7 @@ app.layout = html.Div([
                         id="window-length-input",
                         type="text",
                         value=DEFAULT_BINS,
-                        placeholder="seconds (60-2592000)",
+                        placeholder="seconds (60-7776000)",
                         style={
                             "marginRight": "10px", 
                             "width": "120px",
@@ -819,7 +825,7 @@ app.layout = html.Div([
                                  "color": CYBERPUNK_COLORS['text_secondary'],
                                  "fontFamily": "'Courier New', monospace"
                              }),
-                    html.Div("ENTER SECONDS (60 TO 19,872,000)", 
+                    html.Div("ENTER SECONDS (60 TO 7,776,000)", 
                             style={
                                 "fontSize": "11px", 
                                 "color": CYBERPUNK_COLORS['text_secondary'],
@@ -854,7 +860,16 @@ app.layout = html.Div([
                         2592000: "30d",
                         7776000: "90d",
                         15552000: "180d",
-                        19872000: "230d"
+                        25920000: "300d",
+                        31536000: "1y",
+                        63072000: "2y",
+                        94608000: "3y",
+                        157680000: "5y",
+                        315360000: "10y",
+                        473040000: "15y",
+                        630720000: "20y",
+                        788400000: "25y",
+                        864000000: "27y"
                     },
                     updatemode="mouseup", 
                     tooltip={"placement": "bottom"},
@@ -966,7 +981,71 @@ app.layout = html.Div([
     "minHeight": "100vh"
 })
 
-# ───────────────────────────── callback ────────────────────────────────────
+# ───────────────────────────── callbacks ────────────────────────────────────
+
+def create_url_callback(app_instance):
+    """Callback to handle URL parameters and set advanced mode."""
+    
+    @app_instance.callback(
+        Output("len", "max"),
+        Output("len", "marks"),
+        Input("url", "search")
+    )
+    def update_slider_limits(search):
+        """Update slider limits based on URL parameters."""
+        import urllib.parse
+        
+        # Parse URL search parameters
+        if search:
+            params = urllib.parse.parse_qs(search.lstrip('?'))
+            advanced_mode = params.get('adv', [''])[0].lower() == 'true'
+        else:
+            advanced_mode = False
+        
+        if advanced_mode:
+            # Advanced mode: full 27-year range
+            max_seconds = 10000 * 24 * 3600  # ~27 years
+            marks = {
+                60: "1m",
+                43200: "12h",
+                86400: "1d",
+                172800: "2d",
+                259200: "3d",
+                604800: "1w",
+                1209600: "2w",
+                1814400: "3w",
+                2592000: "30d",
+                7776000: "90d",
+                15552000: "180d",
+                25920000: "300d",
+                31536000: "1y",
+                63072000: "2y",
+                94608000: "3y",
+                157680000: "5y",
+                315360000: "10y",
+                473040000: "15y",
+                630720000: "20y",
+                788400000: "25y",
+                864000000: "27y"
+            }
+        else:
+            # Standard mode: 3-month range
+            max_seconds = 90 * 24 * 3600  # 3 months
+            marks = {
+                60: "1m",
+                43200: "12h",
+                86400: "1d",
+                172800: "2d",
+                259200: "3d",
+                604800: "1w",
+                1209600: "2w",
+                1814400: "3w",
+                2592000: "30d",
+                7776000: "90d"
+            }
+        
+        return max_seconds, marks
+
 def create_egg_callback(app_instance):
     import time
     from dash import ctx
@@ -1407,6 +1486,7 @@ def create_egg_callback(app_instance):
                 start_date_days, start_time_seconds, window_len, bins)
 
 if __name__ == "__main__":
-    # Register callback for standalone app
+    # Register callbacks for standalone app
+    create_url_callback(app)
     create_egg_callback(app)
     app.run(debug=True, host="0.0.0.0", port=8051)
