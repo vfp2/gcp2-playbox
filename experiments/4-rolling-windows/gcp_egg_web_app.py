@@ -80,22 +80,28 @@ EGG_COLS = [
 # Filtered egg columns excluding broken eggs (constant output = 0, Z-score = -14.1419)
 # Based on analysis of 2011-03-11 data showing these eggs have zero variance
 BROKEN_EGGS = [
-    "egg_2088", "egg_2249", "egg_2243", "egg_2236", 
-    "egg_2047", "egg_2024", "egg_2002", "egg_1237"
+    # "egg_2088", "egg_2249", "egg_2243", "egg_2236", 
+    # "egg_2047", "egg_2024", "egg_2002", "egg_1237"
 ]
 
 EGG_COLS_FILTERED = [egg for egg in EGG_COLS if egg not in BROKEN_EGGS]
 
 # ───────────────────────────── SQL builder ────────────────────────────────
-def build_sql() -> str:
+def build_sql(filter_broken_eggs: bool = True) -> str:
     ascii_block = ",\n".join(f"    ASCII({c}) AS {c}" for c in EGG_COLS_FILTERED)  # still used in raw CTE, keeps query readable
     
     # Use published expected values: μ=100, σ=7.0712
     # Keep ASCII conversion as requested
     # Only calculate Z-scores for eggs with non-NULL data
+    # Optionally filter out 0 values (broken eggs)
     z_block_terms = []
     for c in EGG_COLS_FILTERED:
-        z_block_terms.append(f"    IF({c} IS NOT NULL, SAFE_DIVIDE(({c} - 100), 7.0712), NULL) AS z_{c}")
+        if filter_broken_eggs:
+            # Filter out 0 values when checkbox is enabled
+            z_block_terms.append(f"    IF({c} IS NOT NULL AND {c} != 0, SAFE_DIVIDE(({c} - 100), 7.0712), NULL) AS z_{c}")
+        else:
+            # Include all non-NULL values (including 0)
+            z_block_terms.append(f"    IF({c} IS NOT NULL, SAFE_DIVIDE(({c} - 100), 7.0712), NULL) AS z_{c}")
     z_block = ",\n".join(z_block_terms)
     
     # Count non-null eggs for dynamic N calculation
@@ -244,8 +250,8 @@ def get_data_range_info() -> tuple[str, str, int]:
         CACHE.set(cache_key, result, expire=300)
         return result
 
-def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
-    key = (start_ts, window_s, bins)
+def query_bq(start_ts: float, window_s: int, bins: int, filter_broken_eggs: bool = True) -> pd.DataFrame:
+    key = (start_ts, window_s, bins, filter_broken_eggs)
     # fetch or compute dataframe
     df = CACHE.get(key)
     if df is None:
@@ -257,7 +263,7 @@ def query_bq(start_ts: float, window_s: int, bins: int) -> pd.DataFrame:
                 bigquery.ScalarQueryParameter("bins",     "INT64", bins)
             ]
         )
-        sql = build_sql()
+        sql = build_sql(filter_broken_eggs)
         df = (
             bq_client.query(sql, job_config=cfg)
             .to_dataframe(bqstorage_client=bqs_client, create_bqstorage_client=True)
@@ -824,6 +830,28 @@ app.layout = html.Div([
                 html.Div(id="bins-readout", style={"color": CYBERPUNK_COLORS['neon_pink']}),
             ], style={"marginBottom": "20px"}),
             
+            # Basket Dataset Options
+            html.Div([
+                html.H4("Basket Dataset Options", style={
+                    "color": CYBERPUNK_COLORS['neon_cyan'],
+                    "marginBottom": "15px",
+                    "fontFamily": "'Orbitron', monospace",
+                    "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_cyan']}"
+                }),
+                html.Div([
+                    dcc.Checklist(
+                        id="filter-broken-eggs",
+                        options=[{"label": "Filter out broken EGGs with 0-trial sums", "value": "enabled"}],
+                        value=["enabled"],  # Default to enabled
+                        style={
+                            "color": CYBERPUNK_COLORS['text_primary'],
+                            "fontFamily": "'Courier New', monospace",
+                            "fontSize": "14px"
+                        }
+                    )
+                ], style={"marginBottom": "15px"})
+            ], style={"marginBottom": "20px"}),
+            
             # Status indicator
             html.Div(id="status-indicator", 
                     style={
@@ -897,10 +925,11 @@ def create_egg_callback(app_instance):
         Output("bins", "value"),
         Input("start-date", "value"), Input("start-time", "value"), Input("len", "value"), Input("bins", "value"),
         Input("date-picker", "date"), Input("time-input", "value"), Input("window-length-input", "value"), Input("bin-count-input", "value"),
+        Input("filter-broken-eggs", "value"),
         Input("clear-cache-btn", "n_clicks")
     )
     def update_graph(start_date_days, start_time_seconds, window_len, bins, 
-                    date_picker, time_input, window_length_input, bin_count_input, clear_cache_clicks):
+                    date_picker, time_input, window_length_input, bin_count_input, filter_broken_eggs, clear_cache_clicks):
         
         start_time = time.time()
         
@@ -1008,11 +1037,14 @@ def create_egg_callback(app_instance):
         # Combine date and time into datetime
         start_ts = _dt.combine(selected_date, selected_time, tzinfo=_tz.utc).timestamp()
 
+        # Handle broken egg filter
+        filter_broken_eggs_enabled = filter_broken_eggs and "enabled" in filter_broken_eggs
+
         # Check if data is cached or needs to be fetched
-        cache_key = (start_ts, window_len, bins)
+        cache_key = (start_ts, window_len, bins, filter_broken_eggs_enabled)
         is_cached = CACHE.get(cache_key) is not None
         
-        df = query_bq(start_ts, window_len, bins)
+        df = query_bq(start_ts, window_len, bins, filter_broken_eggs_enabled)
         
         # Calculate timing (always do this)
         elapsed_time = time.time() - start_time
@@ -1136,7 +1168,9 @@ def create_egg_callback(app_instance):
         else:
             bin_duration_str = f"{bin_duration/86400:.1f}d"
         
-        bins_str  = f"Bins: {bins} (≈ {bin_duration_str}/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS_FILTERED)} | Method: (Stouffer Z)² - 1"
+        # Add filter status to bins string
+        filter_status = " | 0-filter: ON" if filter_broken_eggs_enabled else " | 0-filter: OFF"
+        bins_str  = f"Bins: {bins} (≈ {bin_duration_str}/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS_FILTERED)}{filter_status} | Method: (Stouffer Z)² - 1"
         
         # Status indicator with more details
         # Get data range info for status string
