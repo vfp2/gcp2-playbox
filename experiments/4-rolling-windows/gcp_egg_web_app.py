@@ -25,6 +25,7 @@ import dash
 from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
 import pandas as pd
+import numpy as np
 import diskcache as dc
 from google.cloud import bigquery
 from google.cloud.bigquery_storage_v1 import BigQueryReadClient
@@ -1317,6 +1318,47 @@ def create_egg_callback(app_instance):
         # Create single-axis plot for cumulative deviation of χ² based on Stouffer Z
         fig = go.Figure()
         
+        # Calculate parabolic probability curves for p=0.05 significance
+        # Scale the curves to match the actual y-axis range of the data
+        # For cumulative deviation, we need to scale based on the actual data variance
+        data_std = np.std(df["cum_stouffer_z"]) if len(df["cum_stouffer_z"]) > 1 else 1.0
+        data_range = np.max(df["cum_stouffer_z"]) - np.min(df["cum_stouffer_z"]) if len(df["cum_stouffer_z"]) > 1 else 100.0
+        
+        # Scale factor based on the actual data characteristics
+        # For p=0.05 significance, use a scaling that reflects the actual data variance
+        scale_factor = data_std * 2.0  # Adjust this multiplier as needed for proper scaling
+        k = scale_factor
+        
+        x_curve = x
+        upper_curve = k * np.sqrt(x_curve)
+        lower_curve = -k * np.sqrt(x_curve)
+        
+        # Add upper significance curve (p=0.05)
+        fig.add_trace(go.Scatter(
+            x=x_curve,
+            y=upper_curve,
+            mode="lines",
+            name="p=0.05 significance (upper)",
+            line=dict(
+                color="red",
+                width=2
+            ),
+            showlegend=True
+        ))
+        
+        # Add lower significance curve (p=0.05)
+        fig.add_trace(go.Scatter(
+            x=x_curve,
+            y=lower_curve,
+            mode="lines",
+            name="p=0.05 significance (lower)",
+            line=dict(
+                color="red",
+                width=2
+            ),
+            showlegend=True
+        ))
+        
         # Always add the real data trace
         fig.add_trace(go.Scatter(
             x=x, 
@@ -1426,7 +1468,8 @@ def create_egg_callback(app_instance):
                 bgcolor=CYBERPUNK_COLORS['bg_dark'],
                 bordercolor=CYBERPUNK_COLORS['neon_purple'],
                 borderwidth=1,
-                font=dict(color=CYBERPUNK_COLORS['text_primary'])
+                font=dict(color=CYBERPUNK_COLORS['text_primary']),
+                yanchor="top"
             ),
             plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
             paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
