@@ -516,6 +516,71 @@ app.layout = html.Div([
             )
         ], style={"marginBottom": "30px"}),
 
+        # Basket Dataset Options - moved here, directly below graph
+        html.Div([
+            html.H4("Basket Dataset Options", style={
+                "color": CYBERPUNK_COLORS['neon_cyan'],
+                "marginBottom": "15px",
+                "fontFamily": "'Orbitron', monospace",
+                "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_cyan']}"
+            }),
+            html.Div([
+                dcc.Checklist(
+                    id="filter-broken-eggs",
+                    options=[{"label": "Filter out broken EGGs with 0-trial sums", "value": "enabled"}],
+                    value=["enabled"],  # Default to enabled
+                    style={
+                        "color": CYBERPUNK_COLORS['text_primary'],
+                        "fontFamily": "'Courier New', monospace",
+                        "fontSize": "14px"
+                    }
+                ),
+                dcc.Checklist(
+                    id="pseudo-entropy",
+                    options=[{"label": "Overlay pseudo entropy (random values)", "value": "enabled"}],
+                    value=[],  # Default to disabled
+                    style={
+                        "color": CYBERPUNK_COLORS['text_primary'],
+                        "fontFamily": "'Courier New', monospace",
+                        "fontSize": "14px",
+                        "marginTop": "10px"
+                    }
+                )
+            ], style={"marginBottom": "15px"}),
+            # Clear cache button on the right side
+            html.Div([
+                html.Button(
+                    "CLEAR CACHE & REFRESH",
+                    id="clear-cache-btn",
+                    n_clicks=0,
+                    style={
+                        "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
+                        "color": CYBERPUNK_COLORS['neon_yellow'],
+                        "border": f"2px solid {CYBERPUNK_COLORS['neon_yellow']}",
+                        "borderRadius": "8px",
+                        "padding": "10px 20px",
+                        "fontSize": "14px",
+                        "fontWeight": "bold",
+                        "fontFamily": "'Courier New', monospace",
+                        "cursor": "pointer",
+                        "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_yellow']}",
+                        "boxShadow": f"0 0 10px {CYBERPUNK_COLORS['neon_yellow']}30",
+                        "transition": "all 0.3s ease"
+                    }
+                )
+            ], style={"display": "flex", "alignItems": "center"})
+        ], style={
+            "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
+            "padding": "20px",
+            "borderRadius": "15px",
+            "border": f"2px solid {CYBERPUNK_COLORS['neon_cyan']}",
+            "boxShadow": f"0 0 30px {CYBERPUNK_COLORS['neon_cyan']}40",
+            "marginBottom": "30px",
+            "display": "flex",
+            "justifyContent": "space-between",
+            "alignItems": "center"
+        }),
+
         # Controls section with cyberpunk styling
         html.Div([
             # Date controls
@@ -874,39 +939,6 @@ app.layout = html.Div([
                 html.Div(id="bins-readout", style={"color": CYBERPUNK_COLORS['neon_pink']}),
             ], style={"marginBottom": "20px"}),
             
-            # Basket Dataset Options
-            html.Div([
-                html.H4("Basket Dataset Options", style={
-                    "color": CYBERPUNK_COLORS['neon_cyan'],
-                    "marginBottom": "15px",
-                    "fontFamily": "'Orbitron', monospace",
-                    "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_cyan']}"
-                }),
-                html.Div([
-                    dcc.Checklist(
-                        id="filter-broken-eggs",
-                        options=[{"label": "Filter out broken EGGs with 0-trial sums", "value": "enabled"}],
-                        value=["enabled"],  # Default to enabled
-                        style={
-                            "color": CYBERPUNK_COLORS['text_primary'],
-                            "fontFamily": "'Courier New', monospace",
-                            "fontSize": "14px"
-                        }
-                    ),
-                    dcc.Checklist(
-                        id="pseudo-entropy",
-                        options=[{"label": "Overlay pseudo entropy (random values)", "value": "enabled"}],
-                        value=[],  # Default to disabled
-                        style={
-                            "color": CYBERPUNK_COLORS['text_primary'],
-                            "fontFamily": "'Courier New', monospace",
-                            "fontSize": "14px",
-                            "marginTop": "10px"
-                        }
-                    )
-                ], style={"marginBottom": "15px"})
-            ], style={"marginBottom": "20px"}),
-            
             # Status indicator
             html.Div(id="status-indicator", 
                     style={
@@ -915,31 +947,7 @@ app.layout = html.Div([
                         "color": CYBERPUNK_COLORS['neon_cyan'],
                         "fontFamily": "'Courier New', monospace",
                         "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_cyan']}"
-                    }),
-            
-            # Cache control button
-            html.Div([
-                html.Button(
-                    "CLEAR CACHE & REFRESH",
-                    id="clear-cache-btn",
-                    n_clicks=0,
-                    style={
-                        "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
-                        "color": CYBERPUNK_COLORS['neon_yellow'],
-                        "border": f"2px solid {CYBERPUNK_COLORS['neon_yellow']}",
-                        "borderRadius": "8px",
-                        "padding": "10px 20px",
-                        "fontSize": "14px",
-                        "fontWeight": "bold",
-                        "fontFamily": "'Courier New', monospace",
-                        "cursor": "pointer",
-                        "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_yellow']}",
-                        "boxShadow": f"0 0 10px {CYBERPUNK_COLORS['neon_yellow']}30",
-                        "marginTop": "15px",
-                        "transition": "all 0.3s ease"
-                    }
-                )
-                    ], style={"textAlign": "center"})
+                    })
     ], style={
         "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
         "padding": "20px",
