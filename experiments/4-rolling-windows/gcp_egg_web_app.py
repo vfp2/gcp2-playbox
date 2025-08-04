@@ -850,305 +850,305 @@ app.layout = html.Div([
                         "transition": "all 0.3s ease"
                     }
                 )
-            ], style={"textAlign": "center"})
-        ], style={
-            "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
-            "padding": "20px",
-            "borderRadius": "15px",
-            "border": f"2px solid {CYBERPUNK_COLORS['neon_cyan']}",
-            "boxShadow": f"0 0 30px {CYBERPUNK_COLORS['neon_cyan']}40"
-        })
+                    ], style={"textAlign": "center"})
     ], style={
-        "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
-        "minHeight": "100vh",
+        "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
         "padding": "20px",
-        "fontFamily": "'Courier New', monospace"
+        "borderRadius": "15px",
+        "border": f"2px solid {CYBERPUNK_COLORS['neon_cyan']}",
+        "boxShadow": f"0 0 30px {CYBERPUNK_COLORS['neon_cyan']}40"
     })
+], style={
+    "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
+    "minHeight": "100vh",
+    "padding": "20px",
+    "fontFamily": "'Courier New', monospace"
+})
 ], style={
     "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
     "minHeight": "100vh"
 })
 
 # ───────────────────────────── callback ────────────────────────────────────
-@app.callback(
-    Output("chi2-graph", "figure"),
-    Output("start-date-readout", "children"),
-    Output("start-time-readout", "children"),
-    Output("len-readout", "children"),
-    Output("bins-readout", "children"),
-    Output("status-indicator", "children"),
-    Output("date-picker", "date"),
-    Output("time-input", "value"),
-    Output("window-length-input", "value"),
-    Output("bin-count-input", "value"),
-    Output("start-date", "value"),
-    Output("start-time", "value"),
-    Output("len", "value"),
-    Output("bins", "value"),
-    Input("start-date", "value"), Input("start-time", "value"), Input("len", "value"), Input("bins", "value"),
-    Input("date-picker", "date"), Input("time-input", "value"), Input("window-length-input", "value"), Input("bin-count-input", "value"),
-    Input("clear-cache-btn", "n_clicks")
-)
-def update_graph(start_date_days, start_time_seconds, window_len, bins, 
-                date_picker, time_input, window_length_input, bin_count_input, clear_cache_clicks):
+def create_egg_callback(app_instance):
     import time
     from dash import ctx
     
-    start_time = time.time()
-    
-    # Determine which input triggered the callback and use that value
-    triggered_id = ctx.triggered_id if ctx.triggered else None
-    
-    # Handle cache clearing
-    if triggered_id == "clear-cache-btn" and clear_cache_clicks and clear_cache_clicks > 0:
-        # Clear the BigQuery cache
-        CACHE.clear()
-        print(f"BigQuery cache cleared at {_dt.now()}")
-    
-    # Initialize values with defaults
-    start_date_days = int(start_date_days or 0)
-    start_time_seconds = int(start_time_seconds or 0)
-    window_len = max(int(window_len or 15000), LEN_MIN_S)  # 4 hours 10 minutes
-    bins = max(int(bins or 15000), BINS_MIN)
-    
-    # Handle date synchronization
-    if triggered_id == "date-picker" and date_picker:
-        # Date picker was changed - update slider
-        selected_date = _dt.strptime(date_picker, "%Y-%m-%d").date()
-        start_date_days = (selected_date - DATE_MIN).days
-    else:
-        # Use slider value or default
-        selected_date = DATE_MIN + _td(days=start_date_days)
-    
-    # Handle time synchronization
-    if triggered_id == "time-input" and time_input:
-        # Time input was changed - try to parse and validate
-        time_input = time_input.strip()
-        try:
-            if ":" in time_input:
-                parts = time_input.split(":")
-                if len(parts) == 2:
-                    hours, minutes = map(int, parts)
-                    # Allow reasonable time ranges, clamp to valid values
-                    hours = max(0, min(23, hours))
-                    minutes = max(0, min(59, minutes))
-                    selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}", "%H:%M").time()
-                    start_time_seconds = hours * 3600 + minutes * 60
-                elif len(parts) == 3:
-                    hours, minutes, seconds = map(int, parts)
-                    hours = max(0, min(23, hours))
-                    minutes = max(0, min(59, minutes))
-                    seconds = max(0, min(59, seconds))
-                    selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}:{seconds:02d}", "%H:%M:%S").time()
-                    start_time_seconds = hours * 3600 + minutes * 60 + seconds
+    @app_instance.callback(
+        Output("chi2-graph", "figure"),
+        Output("start-date-readout", "children"),
+        Output("start-time-readout", "children"),
+        Output("len-readout", "children"),
+        Output("bins-readout", "children"),
+        Output("status-indicator", "children"),
+        Output("date-picker", "date"),
+        Output("time-input", "value"),
+        Output("window-length-input", "value"),
+        Output("bin-count-input", "value"),
+        Output("start-date", "value"),
+        Output("start-time", "value"),
+        Output("len", "value"),
+        Output("bins", "value"),
+        Input("start-date", "value"), Input("start-time", "value"), Input("len", "value"), Input("bins", "value"),
+        Input("date-picker", "date"), Input("time-input", "value"), Input("window-length-input", "value"), Input("bin-count-input", "value"),
+        Input("clear-cache-btn", "n_clicks")
+    )
+    def update_graph(start_date_days, start_time_seconds, window_len, bins, 
+                    date_picker, time_input, window_length_input, bin_count_input, clear_cache_clicks):
+        
+        start_time = time.time()
+        
+        # Determine which input triggered the callback and use that value
+        triggered_id = ctx.triggered_id if ctx.triggered else None
+        
+        # Handle cache clearing
+        if triggered_id == "clear-cache-btn" and clear_cache_clicks and clear_cache_clicks > 0:
+            # Clear the BigQuery cache
+            CACHE.clear()
+            print(f"BigQuery cache cleared at {_dt.now()}")
+        
+        # Initialize values with defaults
+        start_date_days = int(start_date_days or 0)
+        start_time_seconds = int(start_time_seconds or 0)
+        window_len = max(int(window_len or 15000), LEN_MIN_S)  # 4 hours 10 minutes
+        bins = max(int(bins or 15000), BINS_MIN)
+        
+        # Handle date synchronization
+        if triggered_id == "date-picker" and date_picker:
+            # Date picker was changed - update slider
+            selected_date = _dt.strptime(date_picker, "%Y-%m-%d").date()
+            start_date_days = (selected_date - DATE_MIN).days
+        else:
+            # Use slider value or default
+            selected_date = DATE_MIN + _td(days=start_date_days)
+        
+        # Handle time synchronization
+        if triggered_id == "time-input" and time_input:
+            # Time input was changed - try to parse and validate
+            time_input = time_input.strip()
+            try:
+                if ":" in time_input:
+                    parts = time_input.split(":")
+                    if len(parts) == 2:
+                        hours, minutes = map(int, parts)
+                        # Allow reasonable time ranges, clamp to valid values
+                        hours = max(0, min(23, hours))
+                        minutes = max(0, min(59, minutes))
+                        selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}", "%H:%M").time()
+                        start_time_seconds = hours * 3600 + minutes * 60
+                    elif len(parts) == 3:
+                        hours, minutes, seconds = map(int, parts)
+                        hours = max(0, min(23, hours))
+                        minutes = max(0, min(59, minutes))
+                        seconds = max(0, min(59, seconds))
+                        selected_time = _dt.strptime(f"{hours:02d}:{minutes:02d}:{seconds:02d}", "%H:%M:%S").time()
+                        start_time_seconds = hours * 3600 + minutes * 60 + seconds
+                    else:
+                        # Invalid format - use current slider value
+                        selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
                 else:
-                    # Invalid format - use current slider value
-                    selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
-            else:
-                # Try to parse as just hours
-                hours = int(time_input)
-                hours = max(0, min(23, hours))
-                selected_time = _dt.strptime(f"{hours:02d}:00", "%H:%M").time()
-                start_time_seconds = hours * 3600
-        except (ValueError, TypeError) as e:
-            # Invalid input - use current slider value
+                    # Try to parse as just hours
+                    hours = int(time_input)
+                    hours = max(0, min(23, hours))
+                    selected_time = _dt.strptime(f"{hours:02d}:00", "%H:%M").time()
+                    start_time_seconds = hours * 3600
+            except (ValueError, TypeError) as e:
+                # Invalid input - use current slider value
+                selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
+        else:
+            # Use slider value
             selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
-    else:
-        # Use slider value
-        selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
-    
-    # Handle window length synchronization
-    if triggered_id == "window-length-input" and window_length_input is not None:
-        # Text input was changed - try to parse and validate
-        try:
-            window_length_input = str(window_length_input).strip()
-            if window_length_input:
-                # Try to parse as integer
-                parsed_len = int(window_length_input)
-                # Clamp to valid range
-                window_len = max(LEN_MIN_S, min(LEN_MAX_S, parsed_len))
-            else:
-                # Empty input - use current slider value
+        
+        # Handle window length synchronization
+        if triggered_id == "window-length-input" and window_length_input is not None:
+            # Text input was changed - try to parse and validate
+            try:
+                window_length_input = str(window_length_input).strip()
+                if window_length_input:
+                    # Try to parse as integer
+                    parsed_len = int(window_length_input)
+                    # Clamp to valid range
+                    window_len = max(LEN_MIN_S, min(LEN_MAX_S, parsed_len))
+                else:
+                    # Empty input - use current slider value
+                    window_len = max(int(window_len), LEN_MIN_S)
+            except (ValueError, TypeError) as e:
+                # Invalid input - use current slider value
                 window_len = max(int(window_len), LEN_MIN_S)
-        except (ValueError, TypeError) as e:
-            # Invalid input - use current slider value
+        else:
+            # Use slider value
             window_len = max(int(window_len), LEN_MIN_S)
-    else:
-        # Use slider value
-        window_len = max(int(window_len), LEN_MIN_S)
-    
-    # Handle bin count synchronization
-    if triggered_id == "bin-count-input" and bin_count_input is not None:
-        # Text input was changed - try to parse and validate
-        try:
-            bin_count_input = str(bin_count_input).strip()
-            if bin_count_input:
-                # Try to parse as integer
-                parsed_bins = int(bin_count_input)
-                # Clamp to valid range
-                bins = max(BINS_MIN, min(BINS_MAX, parsed_bins))
-            else:
-                # Empty input - use current slider value
+        
+        # Handle bin count synchronization
+        if triggered_id == "bin-count-input" and bin_count_input is not None:
+            # Text input was changed - try to parse and validate
+            try:
+                bin_count_input = str(bin_count_input).strip()
+                if bin_count_input:
+                    # Try to parse as integer
+                    parsed_bins = int(bin_count_input)
+                    # Clamp to valid range
+                    bins = max(BINS_MIN, min(BINS_MAX, parsed_bins))
+                else:
+                    # Empty input - use current slider value
+                    bins = max(int(bins), BINS_MIN)
+            except (ValueError, TypeError) as e:
+                # Invalid input - use current slider value
                 bins = max(int(bins), BINS_MIN)
-        except (ValueError, TypeError) as e:
-            # Invalid input - use current slider value
+        else:
+            # Use slider value
             bins = max(int(bins), BINS_MIN)
-    else:
-        # Use slider value
-        bins = max(int(bins), BINS_MIN)
-    
-    # Combine date and time into datetime
-    start_ts = _dt.combine(selected_date, selected_time, tzinfo=_tz.utc).timestamp()
+        
+        # Combine date and time into datetime
+        start_ts = _dt.combine(selected_date, selected_time, tzinfo=_tz.utc).timestamp()
 
-    # Check if data is cached or needs to be fetched
-    cache_key = (start_ts, window_len, bins)
-    is_cached = CACHE.get(cache_key) is not None
-    
-    df = query_bq(start_ts, window_len, bins)
-    
-    # Calculate timing (always do this)
-    elapsed_time = time.time() - start_time
-    
-    if df.empty:
+        # Check if data is cached or needs to be fetched
+        cache_key = (start_ts, window_len, bins)
+        is_cached = CACHE.get(cache_key) is not None
+        
+        df = query_bq(start_ts, window_len, bins)
+        
+        # Calculate timing (always do this)
+        elapsed_time = time.time() - start_time
+        
+        if df.empty:
+            fig = go.Figure()
+            fig.update_layout(
+                title=dict(
+                    text=f"GCP EGG Statistical Analysis<br><sub>No data found • {elapsed_time:.2f}s</sub>",
+                    x=0.5,
+                    xanchor="center",
+                    font=dict(color=CYBERPUNK_COLORS['neon_pink'])
+                ),
+                xaxis_title="Minutes from window start",
+                yaxis_title="Cumulative χ²",
+                annotations=[dict(
+                    text="No data in selected window", 
+                    showarrow=False,
+                    font=dict(color=CYBERPUNK_COLORS['neon_cyan'])
+                )],
+                margin=dict(l=40, r=40, t=60, b=40),
+                plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                font=dict(
+                    color=CYBERPUNK_COLORS['text_primary'],
+                    family="'Courier New', monospace"
+                )
+            )
+            
+            # Get data range info for status string
+            first_date_str, last_date_str, total_count = get_data_range_info()
+            status_str = f"⚠ No data found in {elapsed_time:.2f}s | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+            
+            return (fig, "No data", "", "", "", status_str,
+                    selected_date, selected_time.strftime("%H:%M"), window_len, bins,
+                    start_date_days, start_time_seconds, window_len, bins)
+
+        # Calculate x-axis values and determine appropriate units
+        seconds_per_bin = window_len / bins
+        
+        # Choose appropriate time unit based on total window length for better readability
+        if window_len < 3600:  # Less than 1 hour
+            time_unit = "minutes"
+            conversion_factor = 60
+            x = df["bin_idx"] * seconds_per_bin / 60
+        elif window_len < 86400:  # Less than 1 day
+            time_unit = "hours"
+            conversion_factor = 3600
+            x = df["bin_idx"] * seconds_per_bin / 3600
+        elif window_len < 604800:  # Less than 1 week
+            time_unit = "days"
+            conversion_factor = 86400
+            x = df["bin_idx"] * seconds_per_bin / 86400
+        else:  # 1 week or more
+            time_unit = "days"
+            conversion_factor = 86400
+            x = df["bin_idx"] * seconds_per_bin / 86400
+        
+        # Create single-axis plot for cumulative deviation of χ² based on Stouffer Z
         fig = go.Figure()
+        
+        # Add cumulative deviation trace with cyberpunk styling
+        fig.add_trace(go.Scatter(
+            x=x, 
+            y=df["cum_stouffer_z"], 
+            mode="lines",
+            name="Cumulative deviation of χ² based on Stouffer Z",
+            line=dict(
+                color=CYBERPUNK_COLORS['neon_purple'],
+                width=3,
+                shape='spline'
+            )
+        ))
+        
+        # Cyberpunk-styled layout
         fig.update_layout(
-            title=dict(
-                text=f"GCP EGG Statistical Analysis<br><sub>No data found • {elapsed_time:.2f}s</sub>",
-                x=0.5,
-                xanchor="center",
-                font=dict(color=CYBERPUNK_COLORS['neon_pink'])
-            ),
-            xaxis_title="Minutes from window start",
-            yaxis_title="Cumulative χ²",
-            annotations=[dict(
-                text="No data in selected window", 
-                showarrow=False,
-                font=dict(color=CYBERPUNK_COLORS['neon_cyan'])
-            )],
+            xaxis_title=f"Time from window start ({time_unit})",
+            yaxis_title="Cumulative deviation of χ² based on Stouffer Z",
             margin=dict(l=40, r=40, t=60, b=40),
+            legend=dict(
+                x=0.02, 
+                y=0.98,
+                bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                bordercolor=CYBERPUNK_COLORS['neon_purple'],
+                borderwidth=1,
+                font=dict(color=CYBERPUNK_COLORS['text_primary'])
+            ),
             plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
             paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
             font=dict(
                 color=CYBERPUNK_COLORS['text_primary'],
                 family="'Courier New', monospace"
+            ),
+            xaxis=dict(
+                gridcolor=CYBERPUNK_COLORS['bg_medium'],
+                zerolinecolor=CYBERPUNK_COLORS['neon_cyan'],
+                title_font=dict(color=CYBERPUNK_COLORS['neon_cyan']),
+                tickfont=dict(color=CYBERPUNK_COLORS['text_secondary'])
+            ),
+            yaxis=dict(
+                gridcolor=CYBERPUNK_COLORS['bg_medium'],
+                zerolinecolor=CYBERPUNK_COLORS['neon_cyan'],
+                title_font=dict(color=CYBERPUNK_COLORS['neon_cyan']),
+                tickfont=dict(color=CYBERPUNK_COLORS['text_secondary'])
             )
         )
         
+        start_date_str = f"Date: {selected_date.strftime('%Y-%m-%d')}"
+        start_time_str = f"Time: {selected_time.strftime('%H:%M:%S')}"
+        len_str   = f"Length: {_td(seconds=window_len)} ({window_len:,} s)"
+        # Format bin duration for display
+        bin_duration = window_len / bins
+        if bin_duration < 60:
+            bin_duration_str = f"{bin_duration:.1f}s"
+        elif bin_duration < 3600:
+            bin_duration_str = f"{bin_duration/60:.1f}m"
+        elif bin_duration < 86400:
+            bin_duration_str = f"{bin_duration/3600:.1f}h"
+        elif bin_duration < 604800:
+            bin_duration_str = f"{bin_duration/86400:.1f}d"
+        else:
+            bin_duration_str = f"{bin_duration/86400:.1f}d"
+        
+        bins_str  = f"Bins: {bins} (≈ {bin_duration_str}/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS_FILTERED)} | Method: (Stouffer Z)² - 1"
+        
+        # Status indicator with more details
         # Get data range info for status string
         first_date_str, last_date_str, total_count = get_data_range_info()
-        status_str = f"⚠ No data found in {elapsed_time:.2f}s | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
         
-        return (fig, "No data", "", "", "", status_str,
+        if triggered_id == "clear-cache-btn" and clear_cache_clicks and clear_cache_clicks > 0:
+            status_str = f"Cache cleared! BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+        elif is_cached:
+            status_str = f"Cached data loaded in {elapsed_time:.2f}s | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+        else:
+            status_str = f"BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+        
+        # Return all outputs including the input components for synchronization
+        return (fig, start_date_str, start_time_str, len_str, bins_str, status_str,
                 selected_date, selected_time.strftime("%H:%M"), window_len, bins,
                 start_date_days, start_time_seconds, window_len, bins)
 
-
-
-    # Calculate x-axis values and determine appropriate units
-    seconds_per_bin = window_len / bins
-    
-    # Choose appropriate time unit based on total window length for better readability
-    if window_len < 3600:  # Less than 1 hour
-        time_unit = "minutes"
-        conversion_factor = 60
-        x = df["bin_idx"] * seconds_per_bin / 60
-    elif window_len < 86400:  # Less than 1 day
-        time_unit = "hours"
-        conversion_factor = 3600
-        x = df["bin_idx"] * seconds_per_bin / 3600
-    elif window_len < 604800:  # Less than 1 week
-        time_unit = "days"
-        conversion_factor = 86400
-        x = df["bin_idx"] * seconds_per_bin / 86400
-    else:  # 1 week or more
-        time_unit = "days"
-        conversion_factor = 86400
-        x = df["bin_idx"] * seconds_per_bin / 86400
-    
-
-    
-    # Create single-axis plot for cumulative deviation of χ² based on Stouffer Z
-    fig = go.Figure()
-    
-    # Add cumulative deviation trace with cyberpunk styling
-    fig.add_trace(go.Scatter(
-        x=x, 
-        y=df["cum_stouffer_z"], 
-        mode="lines",
-        name="Cumulative deviation of χ² based on Stouffer Z",
-        line=dict(
-            color=CYBERPUNK_COLORS['neon_purple'],
-            width=3,
-            shape='spline'
-        )
-    ))
-    
-    # Cyberpunk-styled layout
-    fig.update_layout(
-        xaxis_title=f"Time from window start ({time_unit})",
-        yaxis_title="Cumulative deviation of χ² based on Stouffer Z",
-        margin=dict(l=40, r=40, t=60, b=40),
-        legend=dict(
-            x=0.02, 
-            y=0.98,
-            bgcolor=CYBERPUNK_COLORS['bg_dark'],
-            bordercolor=CYBERPUNK_COLORS['neon_purple'],
-            borderwidth=1,
-            font=dict(color=CYBERPUNK_COLORS['text_primary'])
-        ),
-        plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-        paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-        font=dict(
-            color=CYBERPUNK_COLORS['text_primary'],
-            family="'Courier New', monospace"
-        ),
-        xaxis=dict(
-            gridcolor=CYBERPUNK_COLORS['bg_medium'],
-            zerolinecolor=CYBERPUNK_COLORS['neon_cyan'],
-            title_font=dict(color=CYBERPUNK_COLORS['neon_cyan']),
-            tickfont=dict(color=CYBERPUNK_COLORS['text_secondary'])
-        ),
-        yaxis=dict(
-            gridcolor=CYBERPUNK_COLORS['bg_medium'],
-            zerolinecolor=CYBERPUNK_COLORS['neon_cyan'],
-            title_font=dict(color=CYBERPUNK_COLORS['neon_cyan']),
-            tickfont=dict(color=CYBERPUNK_COLORS['text_secondary'])
-        )
-    )
-    
-    start_date_str = f"Date: {selected_date.strftime('%Y-%m-%d')}"
-    start_time_str = f"Time: {selected_time.strftime('%H:%M:%S')}"
-    len_str   = f"Length: {_td(seconds=window_len)} ({window_len:,} s)"
-    # Format bin duration for display
-    bin_duration = window_len / bins
-    if bin_duration < 60:
-        bin_duration_str = f"{bin_duration:.1f}s"
-    elif bin_duration < 3600:
-        bin_duration_str = f"{bin_duration/60:.1f}m"
-    elif bin_duration < 86400:
-        bin_duration_str = f"{bin_duration/3600:.1f}h"
-    elif bin_duration < 604800:
-        bin_duration_str = f"{bin_duration/86400:.1f}d"
-    else:
-        bin_duration_str = f"{bin_duration/86400:.1f}d"
-    
-    bins_str  = f"Bins: {bins} (≈ {bin_duration_str}/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS_FILTERED)} | Method: (Stouffer Z)² - 1"
-    
-    # Status indicator with more details
-    # Get data range info for status string
-    first_date_str, last_date_str, total_count = get_data_range_info()
-    
-    if triggered_id == "clear-cache-btn" and clear_cache_clicks and clear_cache_clicks > 0:
-        status_str = f"Cache cleared! BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
-    elif is_cached:
-        status_str = f"Cached data loaded in {elapsed_time:.2f}s | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
-    else:
-        status_str = f"BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
-    
-    # Return all outputs including the input components for synchronization
-    return (fig, start_date_str, start_time_str, len_str, bins_str, status_str,
-            selected_date, selected_time.strftime("%H:%M"), window_len, bins,
-            start_date_days, start_time_seconds, window_len, bins)
-
 if __name__ == "__main__":
+    # Register callback for standalone app
+    create_egg_callback(app)
     app.run(debug=True, host="0.0.0.0", port=8051)
