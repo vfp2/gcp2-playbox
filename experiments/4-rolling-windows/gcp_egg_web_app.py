@@ -39,10 +39,10 @@ BASELINE_TBL = os.getenv("BASELINE_TABLE", "baseline_individual")
 DATE_MIN = _dt(1998, 8, 3, tzinfo=_tz.utc).date()
 DATE_MAX = _dt(2025, 7, 31, tzinfo=_tz.utc).date()
 # Default to start of 911 Nelson experiment (first plane hit WTC at 8:46 AM EDT = 12:46 PM UTC)
-DEFAULT_DATE = _dt(2011, 3, 11, tzinfo=_tz.utc).date()
-DEFAULT_TIME = _dt(2011, 3, 11, 5, 36, 0, tzinfo=_tz.utc).time()  # 2:46 PM JST = 05:36 AM UTC
-#DEFAULT_DATE = _dt(2001, 9, 11, tzinfo=_tz.utc).date()
-#DEFAULT_TIME = _dt(2001, 9, 11, 12, 35, 0, tzinfo=_tz.utc).time()  # 8:35 AM EDT = 12:35 PM UTC
+# DEFAULT_DATE = _dt(2011, 3, 11, tzinfo=_tz.utc).date()
+# DEFAULT_TIME = _dt(2011, 3, 11, 5, 36, 0, tzinfo=_tz.utc).time()  # 2:46 PM JST = 05:36 AM UTC
+DEFAULT_DATE = _dt(2001, 9, 11, tzinfo=_tz.utc).date()
+DEFAULT_TIME = _dt(2001, 9, 11, 12, 35, 0, tzinfo=_tz.utc).time()  # 8:35 AM EDT = 12:35 PM UTC
 # DEFAULT_WINDOW_LEN = 3600  # 1 hour default window
 # DEFAULT_BINS = 3600        # 1 hour default bins
 DEFAULT_WINDOW_LEN = 15000
