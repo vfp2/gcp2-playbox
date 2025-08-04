@@ -13,6 +13,7 @@ stored in BigQuery and reproduce Nelson-style statistical analysis.
 * Guards against division-by-zero and empty windows
 * Live slider read-outs
 * Sliders fire the callback only on mouse-up
+* Text input validation delayed until Enter key or focus loss to prevent interruption during typing
 """
 
 import os
@@ -523,26 +524,36 @@ app.layout = html.Div([
                               "marginBottom": "10px"
                           }),
                 html.Div([
-                    dcc.DatePickerSingle(
-                        id="date-picker",
-                        date=DEFAULT_DATE,
-                        min_date_allowed=DATE_MIN,
-                        max_date_allowed=DATE_MAX,
-                        display_format="YYYY-MM-DD",
+                    dcc.Input(
+                        id="date-input",
+                        type="text",
+                        value=DEFAULT_DATE.strftime("%Y-%m-%d"),
+                        placeholder="YYYY-MM-DD",
                         style={
                             "marginRight": "10px",
+                            "width": "120px",
                             "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
                             "color": CYBERPUNK_COLORS['text_primary'],
                             "border": f"1px solid {CYBERPUNK_COLORS['neon_green']}",
-                            "borderRadius": "5px"
-                        }
+                            "borderRadius": "5px",
+                            "fontFamily": "'Courier New', monospace"
+                        },
+                        debounce=True
                     ),
                     html.Span(" OR USE SLIDER BELOW", 
                              style={
                                  "fontSize": "12px", 
                                  "color": CYBERPUNK_COLORS['text_secondary'],
                                  "fontFamily": "'Courier New', monospace"
-                             })
+                             }),
+                    html.Div("VALIDATION: Press Enter or click outside to apply", 
+                            style={
+                                "fontSize": "10px", 
+                                "color": CYBERPUNK_COLORS['neon_green'],
+                                "marginTop": "2px",
+                                "fontFamily": "'Courier New', monospace",
+                                "fontStyle": "italic"
+                            })
                 ], style={"marginBottom": "10px"}),
                 
                 dcc.Slider(
@@ -613,7 +624,8 @@ app.layout = html.Div([
                             "border": f"1px solid {CYBERPUNK_COLORS['neon_yellow']}",
                             "borderRadius": "5px",
                             "fontFamily": "'Courier New', monospace"
-                        }
+                        },
+                        debounce=True
                     ),
                     html.Span(" OR USE SLIDER BELOW", 
                              style={
@@ -627,6 +639,14 @@ app.layout = html.Div([
                                 "color": CYBERPUNK_COLORS['text_secondary'],
                                 "marginTop": "2px",
                                 "fontFamily": "'Courier New', monospace"
+                            }),
+                    html.Div("VALIDATION: Press Enter or click outside to apply", 
+                            style={
+                                "fontSize": "10px", 
+                                "color": CYBERPUNK_COLORS['neon_yellow'],
+                                "marginTop": "2px",
+                                "fontFamily": "'Courier New', monospace",
+                                "fontStyle": "italic"
                             })
                 ], style={"marginBottom": "10px"}),
                 
@@ -719,7 +739,8 @@ app.layout = html.Div([
                             "border": f"1px solid {CYBERPUNK_COLORS['neon_purple']}",
                             "borderRadius": "5px",
                             "fontFamily": "'Courier New', monospace"
-                        }
+                        },
+                        debounce=True
                     ),
                     html.Span(" SECONDS OR USE SLIDER BELOW", 
                              style={
@@ -733,6 +754,14 @@ app.layout = html.Div([
                                 "color": CYBERPUNK_COLORS['text_secondary'],
                                 "marginTop": "2px",
                                 "fontFamily": "'Courier New', monospace"
+                            }),
+                    html.Div("VALIDATION: Press Enter or click outside to apply", 
+                            style={
+                                "fontSize": "10px", 
+                                "color": CYBERPUNK_COLORS['neon_purple'],
+                                "marginTop": "2px",
+                                "fontFamily": "'Courier New', monospace",
+                                "fontStyle": "italic"
                             })
                 ], style={"marginBottom": "10px"}),
                 
@@ -788,7 +817,8 @@ app.layout = html.Div([
                             "border": f"1px solid {CYBERPUNK_COLORS['neon_pink']}",
                             "borderRadius": "5px",
                             "fontFamily": "'Courier New', monospace"
-                        }
+                        },
+                        debounce=True
                     ),
                     html.Span(" BINS OR USE SLIDER BELOW", 
                              style={
@@ -802,6 +832,14 @@ app.layout = html.Div([
                                 "color": CYBERPUNK_COLORS['text_secondary'],
                                 "marginTop": "2px",
                                 "fontFamily": "'Courier New', monospace"
+                            }),
+                    html.Div("VALIDATION: Press Enter or click outside to apply", 
+                            style={
+                                "fontSize": "10px", 
+                                "color": CYBERPUNK_COLORS['neon_pink'],
+                                "marginTop": "2px",
+                                "fontFamily": "'Courier New', monospace",
+                                "fontStyle": "italic"
                             })
                 ], style={"marginBottom": "10px"}),
                 
@@ -915,7 +953,7 @@ def create_egg_callback(app_instance):
         Output("len-readout", "children"),
         Output("bins-readout", "children"),
         Output("status-indicator", "children"),
-        Output("date-picker", "date"),
+        Output("date-input", "value"),
         Output("time-input", "value"),
         Output("window-length-input", "value"),
         Output("bin-count-input", "value"),
@@ -924,12 +962,12 @@ def create_egg_callback(app_instance):
         Output("len", "value"),
         Output("bins", "value"),
         Input("start-date", "value"), Input("start-time", "value"), Input("len", "value"), Input("bins", "value"),
-        Input("date-picker", "date"), Input("time-input", "value"), Input("window-length-input", "value"), Input("bin-count-input", "value"),
+        Input("date-input", "value"), Input("time-input", "value"), Input("window-length-input", "value"), Input("bin-count-input", "value"),
         Input("filter-broken-eggs", "value"),
         Input("clear-cache-btn", "n_clicks")
     )
     def update_graph(start_date_days, start_time_seconds, window_len, bins, 
-                    date_picker, time_input, window_length_input, bin_count_input, filter_broken_eggs, clear_cache_clicks):
+                    date_input, time_input, window_length_input, bin_count_input, filter_broken_eggs, clear_cache_clicks):
         
         start_time = time.time()
         
@@ -949,10 +987,31 @@ def create_egg_callback(app_instance):
         bins = max(int(bins or DEFAULT_BINS), BINS_MIN)
         
         # Handle date synchronization
-        if triggered_id == "date-picker" and date_picker:
-            # Date picker was changed - update slider
-            selected_date = _dt.strptime(date_picker, "%Y-%m-%d").date()
-            start_date_days = (selected_date - DATE_MIN).days
+        if triggered_id == "date-input" and date_input:
+            # Date input was changed - try to parse and validate
+            try:
+                date_input = str(date_input).strip()
+                if date_input:
+                    # Try to parse as YYYY-MM-DD format
+                    selected_date = _dt.strptime(date_input, "%Y-%m-%d").date()
+                    # Clamp to valid range
+                    if selected_date < DATE_MIN:
+                        selected_date = DATE_MIN
+                    elif selected_date > DATE_MAX:
+                        selected_date = DATE_MAX
+                    start_date_days = (selected_date - DATE_MIN).days
+                else:
+                    # Empty input - use current slider value
+                    selected_date = DATE_MIN + _td(days=start_date_days)
+            except (ValueError, TypeError) as e:
+                # Invalid input - use current slider value
+                selected_date = DATE_MIN + _td(days=start_date_days)
+        elif triggered_id in ["start-time", "time-input", "len", "bins", "window-length-input", "bin-count-input", "filter-broken-eggs", "clear-cache-btn"]:
+            # Use slider value when other inputs are triggered (but not when start-date slider is triggered)
+            selected_date = DATE_MIN + _td(days=start_date_days)
+        elif triggered_id == "start-date":
+            # Date slider was changed - update date input
+            selected_date = DATE_MIN + _td(days=start_date_days)
         else:
             # Use slider value or default
             selected_date = DATE_MIN + _td(days=start_date_days)
@@ -990,6 +1049,9 @@ def create_egg_callback(app_instance):
             except (ValueError, TypeError) as e:
                 # Invalid input - use current slider value
                 selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
+        elif triggered_id in ["start-time", "date-input", "start-date", "len", "bins", "window-length-input", "bin-count-input", "filter-broken-eggs", "clear-cache-btn"]:
+            # Use slider value when other inputs are triggered
+            selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
         else:
             # Use slider value
             selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
@@ -1010,6 +1072,9 @@ def create_egg_callback(app_instance):
             except (ValueError, TypeError) as e:
                 # Invalid input - use current slider value
                 window_len = max(int(window_len), LEN_MIN_S)
+        elif triggered_id in ["start-time", "date-input", "start-date", "time-input", "bins", "bin-count-input", "filter-broken-eggs", "clear-cache-btn"]:
+            # Use slider value when other inputs are triggered
+            window_len = max(int(window_len), LEN_MIN_S)
         else:
             # Use slider value
             window_len = max(int(window_len), LEN_MIN_S)
@@ -1030,6 +1095,9 @@ def create_egg_callback(app_instance):
             except (ValueError, TypeError) as e:
                 # Invalid input - use current slider value
                 bins = max(int(bins), BINS_MIN)
+        elif triggered_id in ["start-time", "date-input", "start-date", "time-input", "len", "window-length-input", "filter-broken-eggs", "clear-cache-btn"]:
+            # Use slider value when other inputs are triggered
+            bins = max(int(bins), BINS_MIN)
         else:
             # Use slider value
             bins = max(int(bins), BINS_MIN)
@@ -1079,7 +1147,7 @@ def create_egg_callback(app_instance):
             status_str = f"⚠ No data found in {elapsed_time:.2f}s | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
             
             return (fig, "No data", "", "", "", status_str,
-                    selected_date, selected_time.strftime("%H:%M"), window_len, bins,
+                    selected_date.strftime("%Y-%m-%d"), selected_time.strftime("%H:%M"), window_len, bins,
                     start_date_days, start_time_seconds, window_len, bins)
 
         # Calculate x-axis values and determine appropriate units
@@ -1185,7 +1253,7 @@ def create_egg_callback(app_instance):
         
         # Return all outputs including the input components for synchronization
         return (fig, start_date_str, start_time_str, len_str, bins_str, status_str,
-                selected_date, selected_time.strftime("%H:%M"), window_len, bins,
+                selected_date.strftime("%Y-%m-%d"), selected_time.strftime("%H:%M"), window_len, bins,
                 start_date_days, start_time_seconds, window_len, bins)
 
 if __name__ == "__main__":
