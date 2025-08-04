@@ -38,8 +38,14 @@ BASELINE_TBL = os.getenv("BASELINE_TABLE", "baseline_individual")
 DATE_MIN = _dt(1998, 8, 3, tzinfo=_tz.utc).date()
 DATE_MAX = _dt(2025, 7, 31, tzinfo=_tz.utc).date()
 # Default to start of 911 Nelson experiment (first plane hit WTC at 8:46 AM EDT = 12:46 PM UTC)
-DEFAULT_DATE = _dt(2001, 9, 11, tzinfo=_tz.utc).date()
-DEFAULT_TIME = _dt(2001, 9, 11, 12, 35, 0, tzinfo=_tz.utc).time()  # 8:35 AM EDT = 12:35 PM UTC
+DEFAULT_DATE = _dt(2011, 3, 11, tzinfo=_tz.utc).date()
+DEFAULT_TIME = _dt(2011, 3, 11, 5, 00, 0, tzinfo=_tz.utc).time()  # 8:35 AM EDT = 12:35 PM UTC
+#DEFAULT_DATE = _dt(2001, 9, 11, tzinfo=_tz.utc).date()
+#DEFAULT_TIME = _dt(2001, 9, 11, 12, 35, 0, tzinfo=_tz.utc).time()  # 8:35 AM EDT = 12:35 PM UTC
+DEFAULT_WINDOW_LEN = 3600  # 1 hour default window
+DEFAULT_BINS = 3600        # 1 hour default bins
+# DEFAULT_WINDOW_LEN = 15000
+# DEFAULT_BINS = 15000
 LEN_MIN_S, LEN_MAX_S = 60, 230 * 24 * 3600                # 1 min – 230 days
 BINS_MIN, BINS_MAX   = 1, 30000
 
@@ -697,7 +703,7 @@ app.layout = html.Div([
                     dcc.Input(
                         id="window-length-input",
                         type="text",
-                        value=15000,  # 4 hours 10 minutes
+                        value=DEFAULT_BINS,
                         placeholder="seconds (60-2592000)",
                         style={
                             "marginRight": "10px", 
@@ -729,7 +735,7 @@ app.layout = html.Div([
                     min=LEN_MIN_S, 
                     max=LEN_MAX_S, 
                     step=60, 
-                    value=15000,  # 4 hours 10 minutes
+                    value=DEFAULT_WINDOW_LEN,
                     marks={
                         60: "1m",
                         43200: "12h",
@@ -910,8 +916,8 @@ def create_egg_callback(app_instance):
         # Initialize values with defaults
         start_date_days = int(start_date_days or 0)
         start_time_seconds = int(start_time_seconds or 0)
-        window_len = max(int(window_len or 15000), LEN_MIN_S)  # 4 hours 10 minutes
-        bins = max(int(bins or 15000), BINS_MIN)
+        window_len = max(int(window_len or DEFAULT_WINDOW_LEN), LEN_MIN_S)  # 1 hour default
+        bins = max(int(bins or DEFAULT_BINS), BINS_MIN)
         
         # Handle date synchronization
         if triggered_id == "date-picker" and date_picker:
