@@ -88,8 +88,14 @@ BROKEN_EGGS = [
 EGG_COLS_FILTERED = [egg for egg in EGG_COLS if egg not in BROKEN_EGGS]
 
 # ───────────────────────────── SQL builder ────────────────────────────────
-def build_sql(filter_broken_eggs: bool = True) -> str:
-    ascii_block = ",\n".join(f"    ASCII({c}) AS {c}" for c in EGG_COLS_FILTERED)  # still used in raw CTE, keeps query readable
+def build_sql(filter_broken_eggs: bool = True, use_pseudo_entropy: bool = False) -> str:
+    if use_pseudo_entropy:
+        # Replace all EGG values with binomial random sums (200 trials, p=0.5)
+        # This simulates the actual EGG data structure: sums of 200 binary trials
+        # Expected value = 200 * 0.5 = 100, variance = 200 * 0.5 * 0.5 = 50, std dev = sqrt(50) ≈ 7.07
+        ascii_block = ",\n".join(f"    (SELECT SUM(CAST(RAND() > 0.5 AS INT64)) FROM UNNEST(GENERATE_ARRAY(1, 200)) AS trial) AS {c}" for c in EGG_COLS_FILTERED)
+    else:
+        ascii_block = ",\n".join(f"    ASCII({c}) AS {c}" for c in EGG_COLS_FILTERED)  # still used in raw CTE, keeps query readable
     
     # Use published expected values: μ=100, σ=7.0712
     # Keep ASCII conversion as requested
@@ -157,7 +163,7 @@ SELECT bin_idx, chi2_stouffer_sum, seconds_in_bin, avg_active_eggs
 FROM bins
 ORDER BY bin_idx;"""
 
-def render_sql(start_ts: float, window_s: int, bins: int) -> str:
+def render_sql(start_ts: float, window_s: int, bins: int, use_pseudo_entropy: bool = False) -> str:
     """Return a BigQuery query with ALL parameters inlined as literals.
 
     The DECLARE block is removed and any references to its variables are
@@ -169,7 +175,7 @@ def render_sql(start_ts: float, window_s: int, bins: int) -> str:
     """
     import re
 
-    sql = build_sql()
+    sql = build_sql(use_pseudo_entropy=use_pseudo_entropy)
 
     # We'll inline only the parameter placeholders (marked with '@').
     # This avoids touching identifiers like the CTE name `bins`.
@@ -251,8 +257,8 @@ def get_data_range_info() -> tuple[str, str, int]:
         CACHE.set(cache_key, result, expire=300)
         return result
 
-def query_bq(start_ts: float, window_s: int, bins: int, filter_broken_eggs: bool = True) -> pd.DataFrame:
-    key = (start_ts, window_s, bins, filter_broken_eggs)
+def query_bq(start_ts: float, window_s: int, bins: int, filter_broken_eggs: bool = True, use_pseudo_entropy: bool = False) -> pd.DataFrame:
+    key = (start_ts, window_s, bins, filter_broken_eggs, use_pseudo_entropy)
     # fetch or compute dataframe
     df = CACHE.get(key)
     if df is None:
@@ -264,7 +270,7 @@ def query_bq(start_ts: float, window_s: int, bins: int, filter_broken_eggs: bool
                 bigquery.ScalarQueryParameter("bins",     "INT64", bins)
             ]
         )
-        sql = build_sql(filter_broken_eggs)
+        sql = build_sql(filter_broken_eggs, use_pseudo_entropy)
         df = (
             bq_client.query(sql, job_config=cfg)
             .to_dataframe(bqstorage_client=bqs_client, create_bqstorage_client=True)
@@ -273,7 +279,7 @@ def query_bq(start_ts: float, window_s: int, bins: int, filter_broken_eggs: bool
         CACHE.set(key, df, expire=3600)
 
     # Always print SQL and result for debugging and verification
-    print("\n===== BigQuery SQL =====\n" + render_sql(start_ts, window_s, bins) + "\n========================")
+    print("\n===== BigQuery SQL =====\n" + render_sql(start_ts, window_s, bins, use_pseudo_entropy) + "\n========================")
     print(df.head(10).to_string(index=False))
     print("========================\n")
 
@@ -886,6 +892,17 @@ app.layout = html.Div([
                             "fontFamily": "'Courier New', monospace",
                             "fontSize": "14px"
                         }
+                    ),
+                    dcc.Checklist(
+                        id="pseudo-entropy",
+                        options=[{"label": "Overlay pseudo entropy (random values)", "value": "enabled"}],
+                        value=[],  # Default to disabled
+                        style={
+                            "color": CYBERPUNK_COLORS['text_primary'],
+                            "fontFamily": "'Courier New', monospace",
+                            "fontSize": "14px",
+                            "marginTop": "10px"
+                        }
                     )
                 ], style={"marginBottom": "15px"})
             ], style={"marginBottom": "20px"}),
@@ -964,10 +981,11 @@ def create_egg_callback(app_instance):
         Input("start-date", "value"), Input("start-time", "value"), Input("len", "value"), Input("bins", "value"),
         Input("date-input", "value"), Input("time-input", "value"), Input("window-length-input", "value"), Input("bin-count-input", "value"),
         Input("filter-broken-eggs", "value"),
+        Input("pseudo-entropy", "value"),
         Input("clear-cache-btn", "n_clicks")
     )
     def update_graph(start_date_days, start_time_seconds, window_len, bins, 
-                    date_input, time_input, window_length_input, bin_count_input, filter_broken_eggs, clear_cache_clicks):
+                    date_input, time_input, window_length_input, bin_count_input, filter_broken_eggs, pseudo_entropy, clear_cache_clicks):
         
         start_time = time.time()
         
@@ -1108,11 +1126,14 @@ def create_egg_callback(app_instance):
         # Handle broken egg filter
         filter_broken_eggs_enabled = filter_broken_eggs and "enabled" in filter_broken_eggs
 
-        # Check if data is cached or needs to be fetched
-        cache_key = (start_ts, window_len, bins, filter_broken_eggs_enabled)
-        is_cached = CACHE.get(cache_key) is not None
+        # Handle pseudo entropy option
+        use_pseudo_entropy = pseudo_entropy and "enabled" in pseudo_entropy
+
+        # Always fetch real data (never use pseudo entropy for main data)
+        real_cache_key = (start_ts, window_len, bins, filter_broken_eggs_enabled, False)
+        is_cached = CACHE.get(real_cache_key) is not None
         
-        df = query_bq(start_ts, window_len, bins, filter_broken_eggs_enabled)
+        df = query_bq(start_ts, window_len, bins, filter_broken_eggs_enabled, False)
         
         # Calculate timing (always do this)
         elapsed_time = time.time() - start_time
@@ -1138,12 +1159,13 @@ def create_egg_callback(app_instance):
                 window_len_str = f"{days}d"
             
             # Create comprehensive title for empty case
+            pseudo_status = " | PSEUDO ENTROPY: ON" if use_pseudo_entropy else ""
             title_text = f"""
             <b>GCP EGG Statistical Analysis</b><br>
             <span style='font-size: 14px; color: {CYBERPUNK_COLORS['neon_pink']};'>
             Date: {selected_date.strftime('%Y-%m-%d')} | Time: {selected_time.strftime('%H:%M:%S')} UTC<br>
             Window: {window_len_str} ({window_len:,}s) | Bins: {bins}<br>
-            0-Filter: {'ON' if filter_broken_eggs_enabled else 'OFF'} | No data found • {elapsed_time:.2f}s
+            0-Filter: {'ON' if filter_broken_eggs_enabled else 'OFF'}{pseudo_status} | No data found • {elapsed_time:.2f}s
             </span>
             """
             
@@ -1208,7 +1230,7 @@ def create_egg_callback(app_instance):
         # Create single-axis plot for cumulative deviation of χ² based on Stouffer Z
         fig = go.Figure()
         
-        # Add cumulative deviation trace with cyberpunk styling
+        # Always add the real data trace
         fig.add_trace(go.Scatter(
             x=x, 
             y=df["cum_stouffer_z"], 
@@ -1220,6 +1242,36 @@ def create_egg_callback(app_instance):
                 shape='spline'
             )
         ))
+        
+        # If pseudo entropy is enabled, add a second trace with random data
+        if use_pseudo_entropy:
+            # Query for pseudo entropy data (same parameters but with random values)
+            # Use a different cache key to avoid conflicts with real data
+            pseudo_cache_key = (start_ts, window_len, bins, filter_broken_eggs_enabled, True)
+            df_pseudo = CACHE.get(pseudo_cache_key)
+            if df_pseudo is None:
+                df_pseudo = query_bq(start_ts, window_len, bins, filter_broken_eggs_enabled, True)
+                CACHE.set(pseudo_cache_key, df_pseudo, expire=3600)
+            
+            if not df_pseudo.empty:
+                # Calculate x-axis values for pseudo data (same as real data)
+                x_pseudo = df_pseudo["bin_idx"] * seconds_per_bin / conversion_factor
+                
+                # Debug: Print first few values to see if they're different
+                print(f"Real data first 5 cum_stouffer_z: {df['cum_stouffer_z'].head().tolist()}")
+                print(f"Pseudo data first 5 cum_stouffer_z: {df_pseudo['cum_stouffer_z'].head().tolist()}")
+                
+                fig.add_trace(go.Scatter(
+                    x=x_pseudo, 
+                    y=df_pseudo["cum_stouffer_z"], 
+                    mode="lines",
+                    name="Pseudo entropy (random)",
+                    line=dict(
+                        color=CYBERPUNK_COLORS['neon_yellow'],
+                        width=2,
+                        shape='spline'
+                    )
+                ))
         
         # Format window length in human readable units
         if window_len < 60:
@@ -1253,12 +1305,13 @@ def create_egg_callback(app_instance):
         active_eggs = df['avg_active_eggs'].mean() if not df.empty else 0
         
         # Create comprehensive title
+        pseudo_status = " | PSEUDO ENTROPY: ON (purple=real, yellow=random)" if use_pseudo_entropy else ""
         title_text = f"""
         <b>GCP EGG Statistical Analysis</b><br>
         <span style='font-size: 14px; color: {CYBERPUNK_COLORS['neon_cyan']};'>
         Date: {selected_date.strftime('%Y-%m-%d')} | Time: {selected_time.strftime('%H:%M:%S')} UTC<br>
         Window: {window_len_str} ({window_len:,}s) | Bins: {bins} (≈{bin_duration_str}/bin)<br>
-        Active Eggs: {active_eggs:.1f}/{len(EGG_COLS_FILTERED)} | 0-Filter: {'ON' if filter_broken_eggs_enabled else 'OFF'}<br>
+        Active Eggs: {active_eggs:.1f}/{len(EGG_COLS_FILTERED)} | 0-Filter: {'ON' if filter_broken_eggs_enabled else 'OFF'}{pseudo_status}<br>
         Method: (Stouffer Z)² - 1 | Cumulative deviation of χ²
         </span>
         """
@@ -1332,12 +1385,13 @@ def create_egg_callback(app_instance):
         # Get data range info for status string
         first_date_str, last_date_str, total_count = get_data_range_info()
         
+        pseudo_info = " | PSEUDO ENTROPY: ON" if use_pseudo_entropy else ""
         if triggered_id == "clear-cache-btn" and clear_cache_clicks and clear_cache_clicks > 0:
-            status_str = f"Cache cleared! BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+            status_str = f"Cache cleared! BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins}{pseudo_info} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
         elif is_cached:
-            status_str = f"Cached data loaded in {elapsed_time:.2f}s | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+            status_str = f"Cached data loaded in {elapsed_time:.2f}s{pseudo_info} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
         else:
-            status_str = f"BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+            status_str = f"BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins}{pseudo_info} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
         
         # Return all outputs including the input components for synchronization
         return (fig, start_date_str, start_time_str, len_str, bins_str, status_str,
