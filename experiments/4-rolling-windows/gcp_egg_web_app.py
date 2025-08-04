@@ -1119,21 +1119,55 @@ def create_egg_callback(app_instance):
         
         if df.empty:
             fig = go.Figure()
+            
+            # Format window length in human readable units for empty case
+            if window_len < 60:
+                window_len_str = f"{window_len}s"
+            elif window_len < 3600:
+                window_len_str = f"{window_len//60}m {window_len%60}s"
+            elif window_len < 86400:
+                hours = window_len // 3600
+                minutes = (window_len % 3600) // 60
+                window_len_str = f"{hours}h {minutes}m"
+            elif window_len < 604800:
+                days = window_len // 86400
+                hours = (window_len % 86400) // 3600
+                window_len_str = f"{days}d {hours}h"
+            else:
+                days = window_len // 86400
+                window_len_str = f"{days}d"
+            
+            # Create comprehensive title for empty case
+            title_text = f"""
+            <b>GCP EGG Statistical Analysis</b><br>
+            <span style='font-size: 14px; color: {CYBERPUNK_COLORS['neon_pink']};'>
+            Date: {selected_date.strftime('%Y-%m-%d')} | Time: {selected_time.strftime('%H:%M:%S')} UTC<br>
+            Window: {window_len_str} ({window_len:,}s) | Bins: {bins}<br>
+            0-Filter: {'ON' if filter_broken_eggs_enabled else 'OFF'} | No data found • {elapsed_time:.2f}s
+            </span>
+            """
+            
             fig.update_layout(
                 title=dict(
-                    text=f"GCP EGG Statistical Analysis<br><sub>No data found • {elapsed_time:.2f}s</sub>",
+                    text=title_text,
                     x=0.5,
                     xanchor="center",
-                    font=dict(color=CYBERPUNK_COLORS['neon_pink'])
+                    y=0.98,
+                    yanchor="top",
+                    font=dict(
+                        color=CYBERPUNK_COLORS['text_primary'],
+                        family="'Courier New', monospace",
+                        size=16
+                    )
                 ),
-                xaxis_title="Minutes from window start",
+                xaxis_title="Time from window start",
                 yaxis_title="Cumulative χ²",
                 annotations=[dict(
                     text="No data in selected window", 
                     showarrow=False,
                     font=dict(color=CYBERPUNK_COLORS['neon_cyan'])
                 )],
-                margin=dict(l=40, r=40, t=60, b=40),
+                margin=dict(l=40, r=40, t=120, b=40),
                 plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
                 paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
                 font=dict(
@@ -1187,11 +1221,65 @@ def create_egg_callback(app_instance):
             )
         ))
         
+        # Format window length in human readable units
+        if window_len < 60:
+            window_len_str = f"{window_len}s"
+        elif window_len < 3600:
+            window_len_str = f"{window_len//60}m {window_len%60}s"
+        elif window_len < 86400:
+            hours = window_len // 3600
+            minutes = (window_len % 3600) // 60
+            window_len_str = f"{hours}h {minutes}m"
+        elif window_len < 604800:
+            days = window_len // 86400
+            hours = (window_len % 86400) // 3600
+            window_len_str = f"{days}d {hours}h"
+        else:
+            days = window_len // 86400
+            window_len_str = f"{days}d"
+        
+        # Format bin duration in human readable units
+        bin_duration = window_len / bins
+        if bin_duration < 60:
+            bin_duration_str = f"{bin_duration:.1f}s"
+        elif bin_duration < 3600:
+            bin_duration_str = f"{bin_duration/60:.1f}m"
+        elif bin_duration < 86400:
+            bin_duration_str = f"{bin_duration/3600:.1f}h"
+        else:
+            bin_duration_str = f"{bin_duration/86400:.1f}d"
+        
+        # Get active eggs count
+        active_eggs = df['avg_active_eggs'].mean() if not df.empty else 0
+        
+        # Create comprehensive title
+        title_text = f"""
+        <b>GCP EGG Statistical Analysis</b><br>
+        <span style='font-size: 14px; color: {CYBERPUNK_COLORS['neon_cyan']};'>
+        Date: {selected_date.strftime('%Y-%m-%d')} | Time: {selected_time.strftime('%H:%M:%S')} UTC<br>
+        Window: {window_len_str} ({window_len:,}s) | Bins: {bins} (≈{bin_duration_str}/bin)<br>
+        Active Eggs: {active_eggs:.1f}/{len(EGG_COLS_FILTERED)} | 0-Filter: {'ON' if filter_broken_eggs_enabled else 'OFF'}<br>
+        Method: (Stouffer Z)² - 1 | Cumulative deviation of χ²
+        </span>
+        """
+        
         # Cyberpunk-styled layout
         fig.update_layout(
+            title=dict(
+                text=title_text,
+                x=0.5,
+                xanchor="center",
+                y=0.98,
+                yanchor="top",
+                font=dict(
+                    color=CYBERPUNK_COLORS['text_primary'],
+                    family="'Courier New', monospace",
+                    size=16
+                )
+            ),
             xaxis_title=f"Time from window start ({time_unit})",
             yaxis_title="Cumulative deviation of χ² based on Stouffer Z",
-            margin=dict(l=40, r=40, t=60, b=40),
+            margin=dict(l=40, r=40, t=120, b=40),
             legend=dict(
                 x=0.02, 
                 y=0.98,
