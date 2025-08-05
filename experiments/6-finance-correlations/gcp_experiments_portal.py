@@ -8,9 +8,7 @@ Experiments Available:
 2. Financial Market Correlations (Experiment #6) - Max[Z] trading strategies
 3. [Future experiments to be added]
 
-Author: Research Team
-Based on Scott Wilber's GCP methodology expertise as single source of truth.
-Refer to canon.yaml for experimental protocols.
+Author: FP2 Research Team
 """
 
 import os

@@ -173,9 +173,6 @@ def render_sql(start_ts: float, window_s: int, bins: int, use_pseudo_entropy: bo
     The DECLARE block is removed and any references to its variables are
     substituted so the output can be copy-pasted directly into the BigQuery
     console with no additional parameter binding.  (Requested by user.)
-
-    Scott Wilber emphasises that explicit literals avoid confusion when
-    verifying results by hand.
     """
     import re
 
