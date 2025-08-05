@@ -321,7 +321,7 @@ def create_portal_layout():
                     html.Div([
                         dcc.Link(
                             "→ LAUNCH EGG ANALYSIS INTERFACE",
-                            href="/experiment-4",
+                            href="https://gcpeggs.fp2.dev"
                             target="_blank",
                             className="experiment-link",
                             style={
