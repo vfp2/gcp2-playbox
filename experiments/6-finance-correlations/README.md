@@ -1,147 +1,194 @@
-# GCP Experiments Portal
+# GCP Real-Time Market Prediction System
 
-A cyberpunk-styled web interface for accessing multiple Global Consciousness Project (GCP) research experiments.
+A real-time system that analyzes Global Consciousness Project (GCP) egg data to predict financial market movements using Max[Z] calculations and time-series analysis.
 
-## Overview
+## Architecture Overview
 
-This portal provides a unified interface for various GCP research experiments, implementing established GCP methodology protocols.
+The system consists of several key components:
 
-## Architecture
+### 1. **Data Collection Layer**
+- **GCP Data**: Real-time egg data collection directly from [global-mind.org](http://global-mind.org)
+- **Market Data**: Real-time price feeds via Alpaca Trade API
+- **Buffer System**: In-memory circular buffers for recent data storage
 
-### Main Components
+### 2. **Data Processing Pipeline**
+- **Filtering**: Ignores GCP values of 0 (noise filtering)
+- **Max[Z] Calculation**: Computes Max[Z] from filtered egg data
+- **Time Binning**: Groups data into configurable time windows (30s, 1min, 5min)
+- **Feature Engineering**: Creates prediction features from GCP data
 
-1. **`gcp_experiments_portal.py`** - Main landing page and routing server
-2. **`gcp_finance_analysis.py`** - Financial market correlation analysis (Experiment #6)
-3. **`experiment_4_module.py`** - EGG statistical analysis wrapper (Experiment #4)
-4. **`requirements.txt`** - Python dependencies
+### 3. **Prediction Engine**
+- **Direction Prediction**: Up/Down movement prediction for each market index
+- **Confidence Scoring**: Probability of prediction accuracy
+- **Multiple Timeframes**: Predicts different time horizons
 
-### Experiments Available
+### 4. **Performance Tracking**
+- **Prediction Logging**: Records all predictions and outcomes
+- **Success Metrics**: Hit rate, accuracy, profit/loss simulation
+- **Real-time Dashboard**: Live statistics and performance visualization
 
-#### Experiment #4: EGG Statistical Analysis Explorer
-- **Status**: ACTIVE
-- **Description**: Real-time statistical analysis of GCP EGG network data
-- **Features**: 
-  - Stouffer Z-score methodology across filtered RNG nodes
-  - Cumulative χ² deviation analysis
-  - BigQuery data pipeline integration
-  - Interactive time window selection
-- **Access**: `/experiment-4`
+## Key Features
 
-#### Experiment #6: Financial Market Correlations
-- **Status**: DEVELOPMENT
-- **Description**: Max[Z] anomaly correlation with financial markets
-- **Features**:
-  - Holmberg methodology implementation (2020-2022)
-  - Linear regression: `r_(t+1) = α + β×Max[Z]_t + ε_t`
-  - Bootstrap null hypothesis testing
-  - Threshold conditioning analysis
-  - Walk-forward backtesting simulation
-- **Access**: `/experiment-6`
+### Real-Time Data Processing
+- **GCP Buffer**: Stores 1000 most recent GCP readings
+- **Market Buffer**: Stores recent price data for multiple symbols
+- **Thread-Safe**: Concurrent data collection and analysis
 
-## Installation & Setup
+### Max[Z] Calculations
+- **Real-time Computation**: Calculates Max[Z] from recent GCP data
+- **Threshold Filtering**: Filters out low-value readings (configurable)
+- **Statistical Analysis**: Z-score based anomaly detection
 
-1. **Install Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Market Prediction
+- **Multi-Symbol Support**: SPY, IVV, VOO, VXX, UVXY
+- **Direction Prediction**: Up/Down movement forecasts
+- **Confidence Thresholds**: Only high-confidence predictions are logged
 
-2. **Environment Configuration**:
-   - Copy `.env` file from `../4-rolling-windows/` if using BigQuery
-   - Set up Google Cloud credentials for EGG data access
+### Performance Tracking
+- **24-Hour Statistics**: Rolling accuracy metrics
+- **Per-Symbol Tracking**: Individual performance for each market symbol
+- **Real-time Updates**: Live dashboard with current performance
 
-3. **Launch Portal**:
-   ```bash
-   python gcp_experiments_portal.py
-   ```
+## Configuration
 
-4. **Access URLs**:
-   - Portal: http://localhost:8050
-   - EGG Analysis: http://localhost:8050/experiment-4
-   - Financial Analysis: http://localhost:8050/experiment-6
+The system is highly configurable through the `Config` class:
 
-## Technical Implementation
-
-### Cyberpunk Styling
-- Consistent color scheme across all experiments
-- Matrix rain background animations
-- Neon glow effects and pulsing borders
-- Orbitron and Courier Prime fonts
-
-### Data Analysis Framework
-
-#### Financial Correlation Analysis
-- **Synthetic Data Generation**: Realistic GCP Max[Z] and market return patterns
-- **Regression Analysis**: Rolling window estimation with multivariate controls
-- **Bootstrap Testing**: Null distribution generation preserving all properties except temporal structure
-- **Threshold Conditioning**: Expected returns conditional on Max[Z] significance levels
-- **Visualization**: 4-panel analysis dashboard
-
-#### Statistical Methods
-- Stouffer Z-score: `Z_t^(s) = Σ(Z_i,t)/√N`
-- Chi-squared deviation: `Σ(Z_t^(s))² - 1`
-- Bootstrap significance testing
-- Linear regression with multiple controls
-- Threshold-based conditional analysis
-
-### Module Structure
-- **Modular Design**: Each experiment is a separate importable module
-- **Callback Registration**: Dynamic callback registration for multi-app architecture
-- **Shared Styling**: Centralized cyberpunk theme components
-- **Graceful Imports**: Fallback configurations for missing dependencies
-
-## Research Foundation
-
-### Methodology Sources
-- **Established GCP protocols**: Core methodology framework
-- **Holmberg (2020-2022)**: Financial correlation research series
-- **Novel Market Sentiment Measure**: Backtested trading strategies
-- **Nelson-Bancel**: Original GCP statistical framework
-
-### Key Equations Implemented
-
-**Stouffer Z-score**:
-```
-Z_t^(s) = Σ(Z_i,t)/√N
+```python
+class Config:
+    # GCP Settings
+    GCP_BUFFER_SIZE = 1000          # Number of GCP readings to keep
+    GCP_MIN_VALUE = 0.1             # Minimum GCP value (filter out zeros)
+    
+    # Time Binning
+    BIN_DURATION_SECONDS = 30       # Time window for predictions
+    PREDICTION_HORIZON = 60         # Prediction horizon in seconds
+    
+    # Market Settings
+    MARKET_SYMBOLS = ['SPY', 'IVV', 'VOO', 'VXX', 'UVXY']
+    MARKET_UPDATE_INTERVAL = 5      # Market data update interval
+    
+    # Prediction Settings
+    MIN_SAMPLES_FOR_PREDICTION = 10 # Minimum GCP samples needed
+    CONFIDENCE_THRESHOLD = 0.6      # Minimum confidence for prediction
 ```
 
-**Cumulative Chi-squared Deviation**:
-```
-Σ_t (Z_t^(s))² - 1
-```
+## Setup Instructions
 
-**Financial Regression**:
-```
-r_(t+1) = α + β₁×Max[Z]_t + β₂×r_t + β₃×VIX_t + ε_t
-```
+### 1. Environment Variables
+Create a `.env` file with your API credentials:
 
-**Bootstrap Null Testing**: Preserves all statistical properties except Max[Z] temporal structure
+```bash
+# Alpaca Trade API (required for market data)
+ALPACA_API_KEY=your_alpaca_api_key
+ALPACA_SECRET_KEY=your_alpaca_secret_key
 
-## Development Roadmap
-
-### Planned Experiments
-- **Experiment #3**: Hurst Exponent Analysis
-- **Network Correlation Mapping**: Global RNG node relationships
-- **Real-time Event Detection**: Automated anomaly identification
-
-### Technical Enhancements
-- Real GCP data integration (replacing synthetic data)
-- Historical market data APIs
-- Advanced trading strategy backtesting
-- Performance optimization for large datasets
-- Authentication and user management
-
-## File Structure
-```
-6-finance-correlations/
-├── gcp_experiments_portal.py      # Main portal server
-├── gcp_finance_analysis.py        # Financial analysis module
-├── experiment_4_module.py         # EGG analysis wrapper
-├── requirements.txt               # Dependencies
-└── README.md                      # This file
+# No additional credentials needed for GCP data
+# The system fetches real-time data directly from global-mind.org
 ```
 
-## Notes
-- The EGG analysis functionality imports from `../4-rolling-windows/gcp_egg_web_app.py`
-- Financial analysis currently uses synthetic data for development/testing
-- All implementations follow established GCP methodology protocols
-- Cyberpunk styling provides consistent user experience across experiments
+### 2. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 3. GCP Data Access
+The system fetches real-time data directly from the [Global Consciousness Project](http://global-mind.org) website:
+
+- Real-time egg readings from the global network
+- Live Max[Z] calculations from current data
+- No simulation fallback - only real data is used
+
+### 4. Test GCP Connection
+The system will automatically test connectivity to global-mind.org when started.
+
+## Usage
+
+### Starting the System
+1. Navigate to the experiments portal
+2. Select "Finance Correlations" experiment
+3. Click "START SYSTEM" to begin real-time data collection
+4. Monitor the dashboard for live predictions and performance
+
+### Dashboard Features
+- **System Status**: Shows if data collection is active
+- **Real-Time Data**: Current GCP and market data counts
+- **Current Max[Z]**: Live Max[Z] calculation
+- **Prediction Performance**: 24-hour accuracy statistics per symbol
+
+### Prediction Model
+The current prediction model uses simple threshold-based logic:
+
+```python
+if max_z > 2.5:
+    if max_z > 3.0:
+        return 'up', 0.8      # High confidence up
+    else:
+        return 'down', 0.7    # Medium confidence down
+elif max_z > 1.5:
+    return 'up', 0.6          # Medium confidence up
+else:
+    return 'down', 0.5        # Low confidence down
+```
+
+This can be enhanced with more sophisticated machine learning models.
+
+## Data Flow
+
+1. **GCP Data Collection**: Real-time egg readings from [global-mind.org](http://global-mind.org)
+2. **Market Data Collection**: Price feeds from Alpaca API
+3. **Data Filtering**: Remove zero values and noise
+4. **Max[Z] Calculation**: Compute anomaly scores
+5. **Prediction Generation**: Generate market direction forecasts
+6. **Performance Tracking**: Log predictions and outcomes
+7. **Dashboard Updates**: Real-time visualization
+
+## Performance Metrics
+
+The system tracks several key metrics:
+
+- **Accuracy**: Percentage of correct predictions
+- **Hit Rate**: Number of successful predictions
+- **Up/Down Distribution**: Balance of prediction types
+- **Per-Symbol Performance**: Individual symbol accuracy
+
+## Future Enhancements
+
+### Advanced Prediction Models
+- Machine learning models (Random Forest, Neural Networks)
+- Ensemble methods combining multiple models
+- Feature engineering from historical patterns
+
+### Enhanced Data Sources
+- Additional market indicators (VIX, volatility)
+- Sentiment analysis integration
+- Alternative GCP metrics
+
+### Risk Management
+- Position sizing based on confidence
+- Stop-loss and take-profit logic
+- Portfolio-level risk controls
+
+## Technical Notes
+
+### Thread Safety
+All data structures use thread-safe locks for concurrent access:
+- `DataBuffer`: Thread-safe circular buffer
+- `PredictionTracker`: Thread-safe prediction logging
+
+### Error Handling
+- Graceful degradation on API failures
+- Automatic retry logic for data collection
+- System stops if real data is unavailable (no simulation fallback)
+
+### Memory Management
+- Configurable buffer sizes
+- Automatic cleanup of old data
+- Efficient data structures for real-time processing
+
+## Research Context
+
+This system implements methodologies from Holmberg's research on GCP correlations with financial markets, providing a real-time framework for testing these hypotheses with live data.
+
+## License
+
+This project is part of the GCP2 Playbox experiments and follows the same licensing terms as the parent repository.
