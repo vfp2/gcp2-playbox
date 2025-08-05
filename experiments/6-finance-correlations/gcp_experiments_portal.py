@@ -322,6 +322,7 @@ def create_portal_layout():
                         dcc.Link(
                             "→ LAUNCH EGG ANALYSIS INTERFACE",
                             href="/experiment-4",
+                            target="_blank",
                             className="experiment-link",
                             style={
                                 "fontSize": "16px",
