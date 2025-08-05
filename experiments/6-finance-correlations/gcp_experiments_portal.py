@@ -21,8 +21,7 @@ import plotly.graph_objects as go
 from dash.exceptions import PreventUpdate
 
 # Import experiment modules (conditional imports to avoid BigQuery initialization)
-import sys
-sys.path.append('../4-rolling-windows')
+# Note: EGG analysis now runs as standalone app on port 8051
 
 # ───────────────────────────── global state ────────────────────────────────
 # Track which callbacks have been registered to prevent duplicates
@@ -312,7 +311,7 @@ def create_portal_layout():
                         html.Strong("Features: ", style={"color": CYBERPUNK_COLORS['neon_yellow']}),
                         "Interactive time window selection • Stouffer Z across active eggs • ",
                         "Chi-squared statistical analysis • BigQuery data pipeline • ",
-                        "Dynamic visualization"
+                        "Dynamic visualization • Opens in new window"
                     ], style={
                         "color": CYBERPUNK_COLORS['text_secondary'],
                         "fontSize": "13px",
@@ -471,92 +470,77 @@ app.layout = html.Div([
               Input('url', 'pathname'))
 def display_page(pathname):
     if pathname == '/experiment-4':
-        try:
-            # Import and serve the EGG analysis app directly from the original file
-            sys.path.append('../4-rolling-windows')
-            from gcp_egg_web_app import app as egg_app, create_egg_callback
-            
-            # Register the EGG callback with our main app (only once)
-            if 'egg_callback' not in registered_callbacks:
-                create_egg_callback(app)
-                registered_callbacks.add('egg_callback')
-            
-            # Get the layout from the EGG app and create a fresh copy
-            egg_layout = egg_app.layout
-            
-            # Create a new layout with return button to avoid duplication
-            if isinstance(egg_layout, html.Div):
-                # Create a fresh copy of the children
-                children = list(egg_layout.children)
-                
-                # Add return button at the end
-                return_button = html.Div([
+        # Simple redirect page for EGG analysis
+        return html.Div([
+            html.Div([
+                html.H3("EGG STATISTICAL ANALYSIS EXPLORER", 
+                       style={
+                           "color": CYBERPUNK_COLORS['neon_cyan'],
+                           "textAlign": "center",
+                           "fontSize": "2rem",
+                           "fontFamily": "'Orbitron', monospace",
+                           "marginBottom": "30px"
+                       }),
+                html.P([
+                    "The EGG Statistical Analysis Explorer is now running as a standalone application. ",
+                    "Please open it in a new window to avoid conflicts."
+                ], style={
+                    "color": CYBERPUNK_COLORS['text_secondary'],
+                    "textAlign": "center",
+                    "fontSize": "16px",
+                    "fontFamily": "'Courier Prime', monospace",
+                    "marginBottom": "30px"
+                }),
+                html.Div([
                     html.A(
+                        "→ OPEN EGG ANALYSIS (NEW WINDOW)",
+                        href="http://localhost:8051",
+                        target="_blank",
+                        style={
+                            "color": CYBERPUNK_COLORS['neon_cyan'],
+                            "fontSize": "18px",
+                            "fontFamily": "'Orbitron', monospace",
+                            "textDecoration": "none",
+                            "padding": "15px 30px",
+                            "border": f"3px solid {CYBERPUNK_COLORS['neon_cyan']}",
+                            "borderRadius": "25px",
+                            "display": "inline-block",
+                            "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
+                            "boxShadow": f"0 0 20px {CYBERPUNK_COLORS['neon_cyan']}40"
+                        }
+                    )
+                ], style={"textAlign": "center", "marginBottom": "30px"}),
+                html.Div([
+                    dcc.Link(
                         "← RETURN TO EXPERIMENTS PORTAL",
                         href="/",
                         style={
-                            "color": CYBERPUNK_COLORS['neon_cyan'],
+                            "color": CYBERPUNK_COLORS['neon_pink'],
                             "fontSize": "14px",
                             "fontFamily": "'Orbitron', monospace",
                             "textDecoration": "none",
                             "padding": "8px 16px",
-                            "border": f"1px solid {CYBERPUNK_COLORS['neon_cyan']}",
+                            "border": f"1px solid {CYBERPUNK_COLORS['neon_pink']}",
                             "borderRadius": "20px",
-                            "display": "inline-block",
-                            "marginTop": "20px"
+                            "display": "inline-block"
                         }
                     )
-                ], style={"textAlign": "center", "marginTop": "20px"})
-                
-                # Create a new layout with the return button
-                new_layout = html.Div(children + [return_button], style=egg_layout.style)
-                return new_layout
-            
-            return egg_layout
-            
-        except Exception as e:
-            # Show the actual error that occurred
-            return html.Div([
-                html.H3("Experiment #4 Error", 
-                       style={"color": CYBERPUNK_COLORS['neon_pink'], "textAlign": "center"}),
-                html.P([
-                    f"Error loading EGG analysis: {str(e)}"
-                ], style={
-                    "color": CYBERPUNK_COLORS['text_secondary'], 
-                    "textAlign": "center",
-                    "fontFamily": "'Courier New', monospace",
-                    "fontSize": "14px",
-                    "marginBottom": "20px"
-                }),
-                html.Div([
-                    html.P("Common issues:", style={
-                        "color": CYBERPUNK_COLORS['neon_yellow'],
-                        "fontWeight": "bold",
-                        "marginBottom": "10px"
-                    }),
-                    html.Ul([
-                        html.Li("BigQuery credentials not configured"),
-                        html.Li("Missing Google Cloud service account file"),
-                        html.Li("Network connectivity issues"),
-                        html.Li("Missing dependencies")
-                    ], style={
-                        "color": CYBERPUNK_COLORS['text_secondary'],
-                        "fontFamily": "'Courier New', monospace",
-                        "fontSize": "12px",
-                        "textAlign": "left",
-                        "display": "inline-block"
-                    })
-                ], style={"textAlign": "center", "marginBottom": "20px"}),
-                html.Div([
-                    dcc.Link("← Return to Portal", href="/", 
-                            style={"color": CYBERPUNK_COLORS['neon_cyan']})
-                ], style={"textAlign": "center", "marginTop": "20px"})
+                ], style={"textAlign": "center"})
             ], style={
-                "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
-                "minHeight": "100vh",
+                "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
                 "padding": "50px",
-                "fontFamily": "'Courier New', monospace"
+                "borderRadius": "20px",
+                "border": f"3px solid {CYBERPUNK_COLORS['neon_cyan']}",
+                "boxShadow": f"0 0 40px {CYBERPUNK_COLORS['neon_cyan']}30",
+                "maxWidth": "800px",
+                "margin": "50px auto"
             })
+        ], style={
+            "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
+            "minHeight": "100vh",
+            "padding": "20px",
+            "fontFamily": "'Courier Prime', monospace"
+        })
     elif pathname == '/experiment-6':
         # Import and serve the financial analysis app
         from gcp_finance_analysis import get_finance_layout, register_finance_callbacks
@@ -573,7 +557,7 @@ def display_page(pathname):
 if __name__ == "__main__":
     print("GCP Experiments Portal starting...")
     print("Portal: http://localhost:8050")
-    print("EGG Analysis: http://localhost:8050/experiment-4")
+    print("EGG Analysis: http://localhost:8051")
     print("Financial Analysis: http://localhost:8050/experiment-6")
     print("Neural interface online...")
     
