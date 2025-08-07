@@ -34,7 +34,7 @@ from google.cloud.bigquery_storage_v1 import BigQueryReadClient
 GCP_PROJECT  = os.getenv("GCP_PROJECT", "gcpingcp")
 GCP_DATASET  = os.getenv("GCP_DATASET", "eggs_us")
 GCP_TABLE    = os.getenv("GCP_TABLE", "basket")          # raw second-level table
-BASELINE_TBL = os.getenv("BASELINE_TABLE", "baseline_individual")
+BASELINE_TBL = os.getenv("BASELINE_TABLE", "baseline_individual_nozeros")
 
 # Date range for sliders (3rd Aug 1998 to 31 July 2025)
 DATE_MIN = _dt(1998, 8, 3, tzinfo=_tz.utc).date()
