@@ -549,6 +549,17 @@ app.layout = html.Div([
                         "fontSize": "14px",
                         "marginTop": "10px"
                     }
+                ),
+                dcc.Checklist(
+                    id="show-parabolic-curve",
+                    options=[{"label": "Show parabolic probability curve", "value": "enabled"}],
+                    value=["enabled"],  # Default to enabled
+                    style={
+                        "color": CYBERPUNK_COLORS['text_primary'],
+                        "fontFamily": "'Courier New', monospace",
+                        "fontSize": "14px",
+                        "marginTop": "10px"
+                    }
                 )
             ], style={"marginBottom": "15px"}),
             # Clear cache button on the right side
@@ -1067,10 +1078,11 @@ def create_egg_callback(app_instance):
         Input("date-input", "value"), Input("time-input", "value"), Input("window-length-input", "value"), Input("bin-count-input", "value"),
         Input("filter-broken-eggs", "value"),
         Input("pseudo-entropy", "value"),
+        Input("show-parabolic-curve", "value"),
         Input("clear-cache-btn", "n_clicks")
     )
     def update_graph(start_date_days, start_time_seconds, window_len, bins, 
-                    date_input, time_input, window_length_input, bin_count_input, filter_broken_eggs, pseudo_entropy, clear_cache_clicks):
+                    date_input, time_input, window_length_input, bin_count_input, filter_broken_eggs, pseudo_entropy, show_parabolic_curve, clear_cache_clicks):
         
         start_time = time.time()
         
@@ -1214,6 +1226,9 @@ def create_egg_callback(app_instance):
         # Handle pseudo entropy option
         use_pseudo_entropy = pseudo_entropy and "enabled" in pseudo_entropy
 
+        # Handle parabolic curve option
+        show_parabolic_curve_enabled = show_parabolic_curve and "enabled" in show_parabolic_curve
+
         # Always fetch real data (never use pseudo entropy for main data)
         real_cache_key = (start_ts, window_len, bins, filter_broken_eggs_enabled, False)
         is_cached = CACHE.get(real_cache_key) is not None
@@ -1245,12 +1260,13 @@ def create_egg_callback(app_instance):
             
             # Create comprehensive title for empty case
             pseudo_status = " | PSEUDO ENTROPY: ON" if use_pseudo_entropy else ""
+            parabolic_status = " | Parabolic curve: ON" if show_parabolic_curve_enabled else " | Parabolic curve: OFF"
             title_text = f"""
             <b>GCP EGG Statistical Analysis</b><br>
             <span style='font-size: 14px; color: {CYBERPUNK_COLORS['neon_pink']};'>
             Date: {selected_date.strftime('%Y-%m-%d')} | Time: {selected_time.strftime('%H:%M:%S')} UTC<br>
             Window: {window_len_str} ({window_len:,}s) | Bins: {bins}<br>
-            0-Filter: {'ON' if filter_broken_eggs_enabled else 'OFF'}{pseudo_status} | No data found • {elapsed_time:.2f}s
+            0-Filter: {'ON' if filter_broken_eggs_enabled else 'OFF'}{pseudo_status}{parabolic_status} | No data found • {elapsed_time:.2f}s
             </span>
             """
             
@@ -1330,31 +1346,33 @@ def create_egg_callback(app_instance):
         upper_curve = k * np.sqrt(x_curve)
         lower_curve = -k * np.sqrt(x_curve)
         
-        # Add upper significance curve (p=0.05)
-        fig.add_trace(go.Scatter(
-            x=x_curve,
-            y=upper_curve,
-            mode="lines",
-            name="p=0.05 significance (upper)",
-            line=dict(
-                color="red",
-                width=2
-            ),
-            showlegend=True
-        ))
-        
-        # Add lower significance curve (p=0.05)
-        fig.add_trace(go.Scatter(
-            x=x_curve,
-            y=lower_curve,
-            mode="lines",
-            name="p=0.05 significance (lower)",
-            line=dict(
-                color="red",
-                width=2
-            ),
-            showlegend=True
-        ))
+        # Add parabolic probability curves only if checkbox is enabled
+        if show_parabolic_curve_enabled:
+            # Add upper significance curve (p=0.05)
+            fig.add_trace(go.Scatter(
+                x=x_curve,
+                y=upper_curve,
+                mode="lines",
+                name="p=0.05 significance (upper)",
+                line=dict(
+                    color="red",
+                    width=2
+                ),
+                showlegend=True
+            ))
+            
+            # Add lower significance curve (p=0.05)
+            fig.add_trace(go.Scatter(
+                x=x_curve,
+                y=lower_curve,
+                mode="lines",
+                name="p=0.05 significance (lower)",
+                line=dict(
+                    color="red",
+                    width=2
+                ),
+                showlegend=True
+            ))
         
         # Always add the real data trace
         fig.add_trace(go.Scatter(
@@ -1432,12 +1450,13 @@ def create_egg_callback(app_instance):
         
         # Create comprehensive title
         pseudo_status = " | PSEUDO ENTROPY: ON (purple=real, yellow=random)" if use_pseudo_entropy else ""
+        parabolic_status = " | Parabolic curve: ON" if show_parabolic_curve_enabled else " | Parabolic curve: OFF"
         title_text = f"""
         <b>GCP EGG Statistical Analysis</b><br>
         <span style='font-size: 14px; color: {CYBERPUNK_COLORS['neon_cyan']};'>
         Date: {selected_date.strftime('%Y-%m-%d')} | Time: {selected_time.strftime('%H:%M:%S')} UTC<br>
         Window: {window_len_str} ({window_len:,}s) | Bins: {bins} (≈{bin_duration_str}/bin)<br>
-        Active Eggs: {active_eggs:.1f}/{len(EGG_COLS_FILTERED)} | 0-Filter: {'ON' if filter_broken_eggs_enabled else 'OFF'}{pseudo_status}<br>
+        Active Eggs: {active_eggs:.1f}/{len(EGG_COLS_FILTERED)} | 0-Filter: {'ON' if filter_broken_eggs_enabled else 'OFF'}{pseudo_status}{parabolic_status}<br>
         Method: (Stouffer Z)² - 1 | Cumulative deviation of χ²
         </span>
         """
@@ -1513,12 +1532,13 @@ def create_egg_callback(app_instance):
         first_date_str, last_date_str, total_count = get_data_range_info()
         
         pseudo_info = " | PSEUDO ENTROPY: ON" if use_pseudo_entropy else ""
+        parabolic_info = " | Parabolic curve: ON" if show_parabolic_curve_enabled else " | Parabolic curve: OFF"
         if triggered_id == "clear-cache-btn" and clear_cache_clicks and clear_cache_clicks > 0:
-            status_str = f"Cache cleared! BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins}{pseudo_info} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+            status_str = f"Cache cleared! BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins}{pseudo_info}{parabolic_info} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
         elif is_cached:
-            status_str = f"Cached data loaded in {elapsed_time:.2f}s{pseudo_info} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+            status_str = f"Cached data loaded in {elapsed_time:.2f}s{pseudo_info}{parabolic_info} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
         else:
-            status_str = f"BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins}{pseudo_info} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+            status_str = f"BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins}{pseudo_info}{parabolic_info} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
         
         # Return all outputs including the input components for synchronization
         return (fig, start_date_str, start_time_str, len_str, bins_str, status_str,
