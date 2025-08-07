@@ -23,11 +23,11 @@ This experiment implements a sophisticated web-based analysis tool for exploring
 - **GCP Project**: `gcpingcp` (default)
 - **Dataset**: `eggs_us`
 - **Main Table**: `basket` (raw second-level table)
-- **Baseline Table**: `baseline_individual`
+- **Baseline Table**: `baseline_individual_nozeros`
 
 ### Baseline Individual Table SQL
-The baseline_individual table structure can be viewed at:
-[BigQuery Console - baseline_individual table](https://console.cloud.google.com/bigquery?sq=32174415983:2ac45f9a7c414d5d93b734d73b82f3b3)
+The baseline_individual_nozeros table structure can be viewed at:
+[BigQuery Console - baseline_individual_nozeros table](https://console.cloud.google.com/bigquery?sq=32174415983:577ae871d3e740dbabb420a077e1bb2d)
 
 This table contains the processed GCP v1.0 egg data with the following key characteristics:
 - **Expected Values**: μ=100, σ=7.0712 (published GCP values)
@@ -36,7 +36,7 @@ This table contains the processed GCP v1.0 egg data with the following key chara
 - **Time Resolution**: Second-level granularity
 
 ### Data Processing Pipeline
-The application uses the `gcpingcp` repository's BigQuery inserter to populate the baseline_individual table. The data processing includes:
+The application uses the `gcpingcp` repository's BigQuery inserter to populate the baseline_individual_nozeros table. The data processing includes:
 
 1. **ASCII Conversion**: Raw egg values converted to ASCII representation
 2. **Z-Score Calculation**: Normalized using published expected values
@@ -71,7 +71,7 @@ Create a `.env` file with:
 GCP_PROJECT=gcpingcp
 GCP_DATASET=eggs_us
 GCP_TABLE=basket
-BASELINE_TABLE=baseline_individual
+BASELINE_TABLE=baseline_individual_nozeros
 ```
 
 ### Service Account Setup
@@ -133,7 +133,7 @@ Following standard GCP methodology:
 The application connects to the `gcpingcp` BigQuery project containing processed GCP v1.0 egg data. This data represents the output of random number generators (RNGs) distributed globally as part of the Global Consciousness Project.
 
 ### Baseline Individual Table
-The `baseline_individual` table contains:
+The `baseline_individual_nozeros` table contains:
 - **108 Active Eggs**: Filtered from original 116 eggs
 - **Second-Level Timestamps**: Precise time resolution
 - **Processed Values**: ASCII-converted and normalized data
