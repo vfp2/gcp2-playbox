@@ -468,6 +468,8 @@ class DashboardApp:
             # Hidden elements
             dcc.Interval(id="tick", interval=2000, n_intervals=0),
             html.Div(id="config-ack", style={"display": "none"}),
+            # Browser timezone store (filled by clientside callback)
+            dcc.Store(id="client-tz", storage_type="memory"),
             # Toast notification
             dbc.Toast(
                 id="symbol-toast",
@@ -496,6 +498,26 @@ class DashboardApp:
         @self.app.callback(Output("status-text", "children"), Input("tick", "n_intervals"))
         def status(_: int) -> str:
             return "SYSTEM ONLINE" if self.running else "SYSTEM OFFLINE"
+
+        # Capture browser timezone and local datetime on the client
+        self.app.clientside_callback(
+            """
+            function(n) {
+                try {
+                    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local';
+                    const d = new Date();
+                    // Offset in minutes east of UTC (JS returns minutes behind UTC)
+                    const offsetMinutes = -d.getTimezoneOffset();
+                    const dateStr = d.toLocaleString([], {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+                    return { tzName: tz, offsetMinutes: offsetMinutes, localDate: dateStr };
+                } catch (e) {
+                    return { tzName: 'Local', offsetMinutes: 0, localDate: '' };
+                }
+            }
+            """,
+            Output("client-tz", "data"),
+            Input("tick", "n_intervals"),
+        )
 
         @self.app.callback(Output("sensor-size", "children"), Input("tick", "n_intervals"))
         def sensor_size(_: int) -> str:
@@ -728,8 +750,8 @@ class DashboardApp:
                 pass
             return "ok"
 
-        @self.app.callback(Output("symbol-info", "children"), Input("tick", "n_intervals"))
-        def update_symbol_info(_: int):
+        @self.app.callback(Output("symbol-info", "children"), Input("tick", "n_intervals"), State("client-tz", "data"))
+        def update_symbol_info(_: int, client_tz: dict | None):
             """Update symbol information display."""
             try:
                 # Simple approach - just use the symbols from config
@@ -753,6 +775,29 @@ class DashboardApp:
                     status_color = CYBERPUNK_COLORS["neon_green"] if is_open else CYBERPUNK_COLORS["neon_pink"]
                     trading_hours = info.trading_hours if info else "9:30 AM - 4:00 PM ET"
                     countdown = self._get_countdown_text(info) if info else ""
+                    # Local timezone conversion for trading hours using provided client offset
+                    local_label = ""
+                    try:
+                        tz_name = (client_tz or {}).get("tzName") or "Local"
+                        offset_min = int((client_tz or {}).get("offsetMinutes") or 0)
+                        # Fixed ET hours for now
+                        et_start_min = 9 * 60 + 30
+                        et_end_min = 16 * 60
+                        # Convert ET (UTC-4) to UTC minutes
+                        utc_start_min = et_start_min + 4 * 60
+                        utc_end_min = et_end_min + 4 * 60
+                        def to_local_str(utc_mins: int) -> str:
+                            m = (utc_mins + offset_min) % (24 * 60)
+                            hh = m // 60
+                            mm = m % 60
+                            h12 = ((hh + 11) % 12) + 1
+                            ampm = "PM" if hh >= 12 else "AM"
+                            return f"{h12}:{mm:02d} {ampm}"
+                        local_start = to_local_str(utc_start_min)
+                        local_end = to_local_str(utc_end_min)
+                        local_label = f"({tz_name} {local_start} - {local_end})"
+                    except Exception:
+                        local_label = ""
 
                     symbol_div = html.Div([
                         checkbox,
@@ -761,6 +806,8 @@ class DashboardApp:
                         html.Span(status_text, style={"color": status_color, "fontWeight": "bold"}),
                         html.Span(" • ", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
                         html.Span(trading_hours, style={"color": CYBERPUNK_COLORS["text_secondary"]}),
+                        html.Span(" ", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
+                        html.Span(local_label, style={"color": CYBERPUNK_COLORS["text_secondary"]}),
                         html.Span(" • ", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
                         html.Span(countdown, style={"color": CYBERPUNK_COLORS["neon_yellow"], "fontWeight": "bold"}),
                     ], style={"display": "flex", "alignItems": "center", "marginBottom": "5px"})
