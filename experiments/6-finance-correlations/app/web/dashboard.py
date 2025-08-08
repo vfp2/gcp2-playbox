@@ -8,6 +8,7 @@ import dash
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
 from dash import Dash, Input, Output, dcc, html
+from dash.dependencies import ALL, State
 
 from ..config import AppConfig, load_config
 from ..core.buffers import CircularBuffer
@@ -414,6 +415,37 @@ class DashboardApp:
                                 ], style={
                                     "marginBottom": "10px"
                                 }),
+                                # Add-symbol controls
+                                html.Div([
+                                    dcc.Input(
+                                        id="new-symbol-input",
+                                        type="text",
+                                        placeholder="Add ticker (e.g., TSLA)",
+                                        debounce=True,
+                                        style={
+                                            "backgroundColor": CYBERPUNK_COLORS['bg_light'],
+                                            "color": CYBERPUNK_COLORS['text_primary'],
+                                            "border": f"1px solid {CYBERPUNK_COLORS['neon_cyan']}",
+                                            "borderRadius": "6px",
+                                            "padding": "6px 10px",
+                                            "marginRight": "8px",
+                                            "width": "220px"
+                                        }
+                                    ),
+                                    dbc.Button(
+                                        "Add",
+                                        id="btn-add-symbol",
+                                        color="primary",
+                                        size="sm",
+                                        style={
+                                            "backgroundColor": CYBERPUNK_COLORS['neon_cyan'],
+                                            "borderColor": CYBERPUNK_COLORS['neon_cyan'],
+                                            "color": CYBERPUNK_COLORS['bg_dark'],
+                                            "fontFamily": "'Orbitron', monospace",
+                                            "fontWeight": "bold"
+                                        }
+                                    )
+                                ], style={"display": "flex", "alignItems": "center", "gap": "6px", "marginTop": "6px"}),
                                 # Hidden symbol select for compatibility
                                 dcc.Checklist(
                                     id="symbol-select",
@@ -436,6 +468,22 @@ class DashboardApp:
             # Hidden elements
             dcc.Interval(id="tick", interval=2000, n_intervals=0),
             html.Div(id="config-ack", style={"display": "none"}),
+            # Toast notification
+            dbc.Toast(
+                id="symbol-toast",
+                header="",
+                is_open=False,
+                dismissable=True,
+                duration=4000,
+                icon="danger",
+                style={
+                    "position": "fixed",
+                    "top": 20,
+                    "right": 20,
+                    "minWidth": "280px",
+                    "zIndex": 1060
+                }
+            ),
             
         ], style={
             "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
@@ -691,24 +739,30 @@ class DashboardApp:
                 for symbol in symbols:
                     # Create checkbox for this symbol
                     checkbox = dcc.Checklist(
-                        id=f"symbol-checkbox-{symbol}",
+                        id={"type": "symbol-checkbox", "symbol": symbol},
                         options=[{"label": "", "value": symbol}],
-                        value=[symbol] if symbol in self.config.runtime.symbols else [],
+                        value=[symbol],
                         style={"marginRight": "10px"}
                     )
                     
-                    # Simple display for now
+                    # Dynamic exchange info
+                    info = self.market.get_exchange_info(symbol)
+                    exchange = info.exchange if info else "NYSE"
+                    is_open = info.is_open if info is not None else False
+                    status_text = "OPEN" if is_open else "CLOSED"
+                    status_color = CYBERPUNK_COLORS["neon_green"] if is_open else CYBERPUNK_COLORS["neon_pink"]
+                    trading_hours = info.trading_hours if info else "9:30 AM - 4:00 PM ET"
+                    countdown = self._get_countdown_text(info) if info else ""
+
                     symbol_div = html.Div([
                         checkbox,
                         html.Span(f"{symbol} ", style={"color": CYBERPUNK_COLORS["neon_cyan"], "fontWeight": "bold"}),
-                        html.Span("(NYSE) ", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
-                        html.Span("CLOSED", style={"color": CYBERPUNK_COLORS["neon_pink"], "fontWeight": "bold"}),
+                        html.Span(f"({exchange}) ", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
+                        html.Span(status_text, style={"color": status_color, "fontWeight": "bold"}),
                         html.Span(" • ", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
-                        html.Span("9:30 AM - 4:00 PM ET", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
+                        html.Span(trading_hours, style={"color": CYBERPUNK_COLORS["text_secondary"]}),
                         html.Span(" • ", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
-                        html.Span("(NZST 01:30 - 08:00)", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
-                        html.Span(" • ", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
-                        html.Span("Opens in 2d 12h 51m", style={"color": CYBERPUNK_COLORS["neon_yellow"], "fontWeight": "bold"})
+                        html.Span(countdown, style={"color": CYBERPUNK_COLORS["neon_yellow"], "fontWeight": "bold"}),
                     ], style={"display": "flex", "alignItems": "center", "marginBottom": "5px"})
                     
                     symbol_divs.append(symbol_div)
@@ -717,6 +771,66 @@ class DashboardApp:
                 
             except Exception as e:
                 return []
+
+        @self.app.callback(
+            Output("symbol-select", "options"),
+            Output("symbol-select", "value"),
+            Input({"type": "symbol-checkbox", "symbol": ALL}, "value"),
+            Input("tick", "n_intervals"),
+        )
+        def sync_symbol_select(values_lists: list[list[str]] | None, _: int):
+            # Flatten selected values from all per-symbol checklists
+            try:
+                symbols_all = list(self.config.runtime.symbols)
+                options = [{"label": s, "value": s} for s in symbols_all]
+                selected: list[str] = []
+                if values_lists:
+                    for v in values_lists:
+                        if v:
+                            selected.extend(v)
+                # Default to all if nothing explicitly selected
+                if not selected:
+                    selected = symbols_all
+                # Deduplicate while preserving order
+                seen = set()
+                selected_unique = [s for s in selected if not (s in seen or seen.add(s))]
+                return options, selected_unique
+            except Exception:
+                syms = list(self.config.runtime.symbols)
+                return ([{"label": s, "value": s} for s in syms], syms)
+
+        @self.app.callback(
+            Output("new-symbol-input", "value"),
+            Output("symbol-toast", "is_open"),
+            Output("symbol-toast", "header"),
+            Output("symbol-toast", "children"),
+            Output("symbol-toast", "icon"),
+            Input("btn-add-symbol", "n_clicks"),
+            Input("new-symbol-input", "n_submit"),
+            State("new-symbol-input", "value"),
+            prevent_initial_call=True,
+        )
+        def on_add_symbol(n_clicks: int | None, n_submit: int | None, value: str | None):
+            try:
+                sym_raw = (value or "").strip()
+                if not sym_raw:
+                    return "", True, "Invalid ticker", "Please enter a ticker symbol.", "danger"
+                symbol = sym_raw.upper()
+                if symbol in self.config.runtime.symbols:
+                    # Nothing to do; silently accept
+                    return "", False, "", "", "danger"
+                ok = False
+                try:
+                    ok = self.market.add_symbol(symbol)
+                except Exception:
+                    ok = False
+                if ok:
+                    # Added; clear input, no toast
+                    return "", False, "", "", "success"
+                # Invalid symbol
+                return symbol, True, "Ticker not found", f"'{symbol}' is not a valid ticker.", "danger"
+            except Exception:
+                return value or "", True, "Error", "Unexpected error adding ticker.", "danger"
 
     def _get_countdown_text(self, info) -> str:
         """Get countdown text for next open/close."""

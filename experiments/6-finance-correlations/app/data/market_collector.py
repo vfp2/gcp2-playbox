@@ -3,9 +3,10 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 import math
 import hashlib
+import re
 
 try:
     from alpaca_trade_api import REST  # type: ignore
@@ -66,6 +67,17 @@ class MarketCollector:
                 secret_key=config.env.ALPACA_SECRET_KEY,
                 base_url=config.env.ALPACA_BASE_URL,
             )
+        # Validation client (used even in simulate mode if keys are present)
+        self._validation_client = None
+        if REST is not None and config.env.ALPACA_API_KEY and config.env.ALPACA_SECRET_KEY:
+            try:
+                self._validation_client = REST(
+                    key_id=config.env.ALPACA_API_KEY,
+                    secret_key=config.env.ALPACA_SECRET_KEY,
+                    base_url=config.env.ALPACA_BASE_URL,
+                )
+            except Exception:
+                self._validation_client = None
         
         # Initialize exchange info
         self._init_exchange_info()
@@ -199,6 +211,85 @@ class MarketCollector:
     def get_all_exchange_info(self) -> Dict[str, ExchangeInfo]:
         """Get exchange information for all symbols."""
         return self._exchange_info.copy()
+
+    # ───────────────────────────── dynamic symbols ─────────────────────────────
+    def add_symbol(self, symbol: str) -> bool:
+        """Validate and add a new symbol at runtime.
+
+        Returns True if added, False if invalid/not found.
+
+        In simulate mode (dev_mode), validate via simple ticker regex/length.
+        In live mode, attempt a lightweight API call to confirm existence.
+
+        Per Scott Wilber (canon.yaml), we prioritize deterministic, low-latency
+        operation; dynamic additions should be validated quickly and integrated
+        without disrupting ongoing calculations.
+        """
+        s = (symbol or "").strip().upper()
+        if not s:
+            return False
+        if s in self.config.runtime.symbols:
+            return True
+
+        # Basic validation: letters, numbers, dots/hyphens common in tickers
+        if not re.fullmatch(r"[A-Z][A-Z0-9\.\-]{0,9}", s):
+            return False
+
+        exists = True
+        asset_exch: Optional[str] = None
+        client = self._client or self._validation_client
+        if client is not None:
+            try:
+                # Prefer asset lookup for existence and exchange
+                asset = client.get_asset(s)
+                if asset is not None and getattr(asset, "symbol", None):
+                    exists = True
+                    asset_exch = getattr(asset, "exchange", None)
+                else:
+                    exists = False
+            except Exception:
+                # Fallback to quote lookup
+                try:
+                    quote = client.get_latest_quote(s)
+                    exists = bool(quote)
+                except Exception:
+                    exists = False
+        else:
+            # No validation backend available in simulate mode → reject
+            exists = False
+
+        if not exists:
+            return False
+
+        # Update runtime symbols
+        self.config.runtime.symbols.append(s)
+
+        # Initialize simulation params for the new symbol
+        h = int(hashlib.sha256(s.encode()).hexdigest()[:8], 16)
+        base_offset = (h % 4000) / 100.0 - 20.0
+        amp1 = 1.0 + ((h >> 3) % 300) / 100.0
+        amp2 = 0.2 + ((h >> 9) % 80) / 100.0
+        phase1 = ((h >> 15) % 628) / 100.0
+        phase2 = ((h >> 21) % 628) / 100.0
+        self._sim_params[s] = {
+            "base_offset": base_offset,
+            "amp1": amp1,
+            "amp2": amp2,
+            "phase1": phase1,
+            "phase2": phase2,
+        }
+
+        # Add default exchange info entry
+        # Choose exchange: prefer Alpaca asset-derived if available
+        exchange = asset_exch or ("NYSE" if s in ["SPY", "IVV", "VOO", "VXX"] else "NASDAQ")
+        self._exchange_info[s] = ExchangeInfo(
+            symbol=s,
+            exchange=exchange,
+            is_open=self._is_market_open(),
+            trading_hours="9:30 AM - 4:00 PM ET",
+        )
+        return True
+
 
 
 
