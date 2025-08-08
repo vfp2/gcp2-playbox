@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Dict, Optional
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Optional, List
 import math
 import hashlib
 
@@ -22,6 +22,16 @@ class PriceState:
     last_price: Dict[str, float]
 
 
+@dataclass
+class ExchangeInfo:
+    symbol: str
+    exchange: str
+    is_open: bool
+    next_open: Optional[datetime] = None
+    next_close: Optional[datetime] = None
+    trading_hours: str = "9:30 AM - 4:00 PM ET"
+
+
 class MarketCollector:
     def __init__(self, config: AppConfig, buffer: CircularBuffer[MarketTick]) -> None:
         self.config = config
@@ -29,6 +39,8 @@ class MarketCollector:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._state = PriceState(last_price={})
+        self._exchange_info: Dict[str, ExchangeInfo] = {}
+        
         # Deterministic per-symbol simulation parameters (so lines are distinct)
         self._sim_params: Dict[str, Dict[str, float]] = {}
         for s in config.runtime.symbols:
@@ -54,6 +66,9 @@ class MarketCollector:
                 secret_key=config.env.ALPACA_SECRET_KEY,
                 base_url=config.env.ALPACA_BASE_URL,
             )
+        
+        # Initialize exchange info
+        self._init_exchange_info()
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -70,6 +85,9 @@ class MarketCollector:
     def _run(self) -> None:
         while not self._stop.is_set():
             try:
+                # Update market status
+                self._update_market_status()
+                
                 for symbol in self.config.runtime.symbols:
                     price = self._get_latest_price(symbol)
                     if price is not None:
@@ -78,6 +96,13 @@ class MarketCollector:
             except Exception:
                 pass
             self._stop.wait(timeout=2)
+
+    def _update_market_status(self) -> None:
+        """Update market status for all symbols."""
+        is_open = self._is_market_open()
+        for symbol in self.config.runtime.symbols:
+            if symbol in self._exchange_info:
+                self._exchange_info[symbol].is_open = is_open
 
     def _get_latest_price(self, symbol: str) -> Optional[float]:
         if self._client is None:
@@ -99,6 +124,81 @@ class MarketCollector:
         except Exception:
             return None
         return None
+
+    def _init_exchange_info(self) -> None:
+        """Initialize exchange information for all symbols.
+        
+        Note: This is a simplified implementation. For full Alpaca API integration:
+        1. Use self._client.get_asset(symbol) to get real exchange info
+        2. Use self._client.get_clock() to get real market status
+        3. Use pytz for proper timezone handling
+        4. Handle holidays and special market hours
+        """
+        for symbol in self.config.runtime.symbols:
+            # Default exchange info (NYSE/NASDAQ for most ETFs)
+            exchange = "NYSE" if symbol in ["SPY", "IVV", "VOO", "VXX"] else "NASDAQ"
+            
+            # Try to get real exchange info if available
+            if self._client is not None:
+                try:
+                    # TODO: Implement real Alpaca API calls
+                    # asset = self._client.get_asset(symbol)
+                    # exchange = asset.exchange if hasattr(asset, 'exchange') else exchange
+                    pass
+                except Exception:
+                    pass
+            
+            self._exchange_info[symbol] = ExchangeInfo(
+                symbol=symbol,
+                exchange=exchange,
+                is_open=self._is_market_open(),
+                trading_hours="9:30 AM - 4:00 PM ET"
+            )
+
+    def _is_market_open(self) -> bool:
+        """Check if market is currently open."""
+        if self._client is None:
+            # Simulation mode - assume market is open during business hours
+            now = datetime.now(timezone.utc)
+            
+            # Convert to ET (Eastern Time)
+            # ET is UTC-5 (EST) or UTC-4 (EDT) - using EDT for simplicity
+            # In production, this should use pytz for proper timezone handling
+            et_offset = -4  # EDT offset (UTC-4)
+            et_hour = now.hour + et_offset
+            if et_hour < 0:
+                et_hour += 24
+            elif et_hour >= 24:
+                et_hour -= 24
+            et_minute = now.minute
+            
+            # Market hours: 9:30 AM - 4:00 PM ET
+            market_start = 9 * 60 + 30  # 9:30 AM in minutes
+            market_end = 16 * 60  # 4:00 PM in minutes
+            current_time = et_hour * 60 + et_minute
+            
+            # Check if it's a weekday (Monday = 0, Sunday = 6)
+            weekday = now.weekday()
+            is_weekday = weekday < 5  # Monday to Friday
+            
+            return is_weekday and market_start <= current_time < market_end
+        
+        try:
+            # Try to get market clock from Alpaca API
+            # This is a placeholder - actual implementation depends on Alpaca API
+            # clock = self._client.get_clock()
+            # return clock.is_open if hasattr(clock, 'is_open') else True
+            return True
+        except Exception:
+            return True
+
+    def get_exchange_info(self, symbol: str) -> Optional[ExchangeInfo]:
+        """Get exchange information for a symbol."""
+        return self._exchange_info.get(symbol)
+
+    def get_all_exchange_info(self) -> Dict[str, ExchangeInfo]:
+        """Get exchange information for all symbols."""
+        return self._exchange_info.copy()
 
 
 

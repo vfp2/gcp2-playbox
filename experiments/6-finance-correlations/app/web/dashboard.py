@@ -409,14 +409,17 @@ class DashboardApp:
                                              "marginBottom": "5px",
                                              "display": "block"
                                          }),
+                                html.Div(id="symbol-info", children=[
+                                    # This will be populated by callback with formatted checklist
+                                ], style={
+                                    "marginBottom": "10px"
+                                }),
+                                # Hidden symbol select for compatibility
                                 dcc.Checklist(
                                     id="symbol-select",
                                     options=[{"label": symbol, "value": symbol} for symbol in self.config.runtime.symbols],
                                     value=self.config.runtime.symbols,
-                                    style={
-                                        "color": CYBERPUNK_COLORS['text_primary'],
-                                        "fontFamily": "'Courier New', monospace"
-                                    }
+                                    style={"display": "none"}
                                 )
                             ], style={"marginTop": "10px"})
                         ], style={"height": "100%"})
@@ -676,6 +679,156 @@ class DashboardApp:
             except Exception:
                 pass
             return "ok"
+
+        @self.app.callback(Output("symbol-info", "children"), Input("tick", "n_intervals"))
+        def update_symbol_info(_: int):
+            """Update symbol information display."""
+            try:
+                # Simple approach - just use the symbols from config
+                symbols = self.config.runtime.symbols
+                
+                symbol_divs = []
+                for symbol in symbols:
+                    # Create checkbox for this symbol
+                    checkbox = dcc.Checklist(
+                        id=f"symbol-checkbox-{symbol}",
+                        options=[{"label": "", "value": symbol}],
+                        value=[symbol] if symbol in self.config.runtime.symbols else [],
+                        style={"marginRight": "10px"}
+                    )
+                    
+                    # Simple display for now
+                    symbol_div = html.Div([
+                        checkbox,
+                        html.Span(f"{symbol} ", style={"color": CYBERPUNK_COLORS["neon_cyan"], "fontWeight": "bold"}),
+                        html.Span("(NYSE) ", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
+                        html.Span("CLOSED", style={"color": CYBERPUNK_COLORS["neon_pink"], "fontWeight": "bold"}),
+                        html.Span(" • ", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
+                        html.Span("9:30 AM - 4:00 PM ET", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
+                        html.Span(" • ", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
+                        html.Span("(NZST 01:30 - 08:00)", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
+                        html.Span(" • ", style={"color": CYBERPUNK_COLORS["text_secondary"]}),
+                        html.Span("Opens in 2d 12h 51m", style={"color": CYBERPUNK_COLORS["neon_yellow"], "fontWeight": "bold"})
+                    ], style={"display": "flex", "alignItems": "center", "marginBottom": "5px"})
+                    
+                    symbol_divs.append(symbol_div)
+                
+                return symbol_divs
+                
+            except Exception as e:
+                return []
+
+    def _get_countdown_text(self, info) -> str:
+        """Get countdown text for next open/close."""
+        try:
+            now = datetime.now(timezone.utc)
+            
+            # Convert to ET (Eastern Time)
+            # ET is UTC-5 (EST) or UTC-4 (EDT) - using EDT for simplicity
+            # In production, this should use pytz for proper timezone handling
+            et_offset = -4  # EDT offset (UTC-4)
+            et_hour = now.hour + et_offset
+            if et_hour < 0:
+                et_hour += 24
+            elif et_hour >= 24:
+                et_hour -= 24
+            et_minute = now.minute
+            current_time = et_hour * 60 + et_minute
+            
+            # Market hours in minutes
+            market_start = 9 * 60 + 30  # 9:30 AM
+            market_end = 16 * 60  # 4:00 PM
+            
+            if info.is_open:
+                # Market is open - countdown to close
+                if current_time < market_end:
+                    minutes_to_close = market_end - current_time
+                    hours = minutes_to_close // 60
+                    minutes = minutes_to_close % 60
+                    if hours > 0:
+                        return f"Closes in {hours}h {minutes}m"
+                    else:
+                        return f"Closes in {minutes}m"
+                else:
+                    return "Closes soon"
+            else:
+                # Market is closed - countdown to next open
+                weekday = now.weekday()  # Monday = 0, Sunday = 6
+                
+                # Calculate days until next market day
+                if weekday < 5:  # Weekday
+                    if current_time < market_start:
+                        # Today, before market opens
+                        minutes_to_open = market_start - current_time
+                        hours = minutes_to_open // 60
+                        minutes = minutes_to_open % 60
+                        if hours > 0:
+                            return f"Opens in {hours}h {minutes}m"
+                        else:
+                            return f"Opens in {minutes}m"
+                    else:
+                        # Today, after market closes - next business day
+                        days_to_next = 1
+                        while (weekday + days_to_next) % 7 >= 5:  # Skip weekends
+                            days_to_next += 1
+                        next_weekday = (weekday + days_to_next) % 7
+                        if days_to_next == 1:
+                            return "Opens tomorrow"
+                        else:
+                            # Calculate exact time until next open
+                            target_date = now.replace(hour=9, minute=30, second=0, microsecond=0)
+                            target_date = target_date.replace(day=target_date.day + days_to_next)
+                            # Adjust for weekends
+                            while target_date.weekday() >= 5:
+                                target_date = target_date.replace(day=target_date.day + 1)
+                            
+                            time_diff = target_date - now
+                            total_seconds = int(time_diff.total_seconds())
+                            days = total_seconds // 86400
+                            hours = (total_seconds % 86400) // 3600
+                            minutes = (total_seconds % 3600) // 60
+                            
+                            if days > 0:
+                                return f"Opens in {days}d {hours}h {minutes}m"
+                            elif hours > 0:
+                                return f"Opens in {hours}h {minutes}m"
+                            else:
+                                return f"Opens in {minutes}m"
+                else:
+                    # Weekend
+                    if weekday == 5:  # Saturday
+                        # Calculate time until Monday 9:30 AM
+                        target_date = now.replace(hour=9, minute=30, second=0, microsecond=0)
+                        target_date = target_date.replace(day=target_date.day + 2)  # Monday
+                        
+                        time_diff = target_date - now
+                        total_seconds = int(time_diff.total_seconds())
+                        days = total_seconds // 86400
+                        hours = (total_seconds % 86400) // 3600
+                        minutes = (total_seconds % 3600) // 60
+                        
+                        if days > 0:
+                            return f"Opens Monday in {days}d {hours}h {minutes}m"
+                        elif hours > 0:
+                            return f"Opens Monday in {hours}h {minutes}m"
+                        else:
+                            return f"Opens Monday in {minutes}m"
+                    else:  # Sunday
+                        # Calculate time until Monday 9:30 AM
+                        target_date = now.replace(hour=9, minute=30, second=0, microsecond=0)
+                        target_date = target_date.replace(day=target_date.day + 1)  # Monday
+                        
+                        time_diff = target_date - now
+                        total_seconds = int(time_diff.total_seconds())
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds % 3600) // 60
+                        
+                        if hours > 0:
+                            return f"Opens tomorrow in {hours}h {minutes}m"
+                        else:
+                            return f"Opens tomorrow in {minutes}m"
+        except Exception:
+            return ""
 
 
 def build_dash_app(config: AppConfig | None = None) -> Dash:
