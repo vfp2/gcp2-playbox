@@ -28,9 +28,6 @@ class GcpState:
 
 class GcpCollector:
     """Collector for GCP CSV endpoint with field types 12 and 13.
-
-    Per Scott Wilber (canon.yaml), field type 12 enumerates currently active
-    eggs; type 13 provides per-egg samples keyed by Unix time.
     """
 
     def __init__(self, config: AppConfig, buffer: CircularBuffer[SensorSample]) -> None:

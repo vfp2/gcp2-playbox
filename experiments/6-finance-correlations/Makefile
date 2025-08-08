@@ -16,7 +16,7 @@ dev-market: dev
 	$(PIP) install --only-binary=:all: '.[market]'
 
 run:
-	$(PY) main.py run --simulate --log-level INFO
+	$(PY) main.py run --log-level INFO
 
 serve:
 	$(PY) main.py serve --host 0.0.0.0 --port 8050

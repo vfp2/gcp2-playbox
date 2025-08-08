@@ -12,7 +12,7 @@ def serve(host: Optional[str] = None, port: Optional[int] = None) -> None:
     app.run_server(
         host or cfg.env.DASH_HOST,
         cfg.env.DASH_PORT if port is None else port,
-        debug=cfg.runtime.dev_mode,
+        debug=False,
     )
 
 if __name__ == "__main__":  # pragma: no cover

@@ -42,32 +42,16 @@ class MarketCollector:
         self._state = PriceState(last_price={})
         self._exchange_info: Dict[str, ExchangeInfo] = {}
         
-        # Deterministic per-symbol simulation parameters (so lines are distinct)
-        self._sim_params: Dict[str, Dict[str, float]] = {}
-        for s in config.runtime.symbols:
-            h = int(hashlib.sha256(s.encode()).hexdigest()[:8], 16)
-            # map hash to stable params
-            base_offset = (h % 4000) / 100.0 - 20.0  # [-20, +20]
-            amp1 = 1.0 + ((h >> 3) % 300) / 100.0    # [1.0, 4.0]
-            amp2 = 0.2 + ((h >> 9) % 80) / 100.0     # [0.2, 1.0]
-            phase1 = ((h >> 15) % 628) / 100.0       # [0, 6.28]
-            phase2 = ((h >> 21) % 628) / 100.0       # [0, 6.28]
-            self._sim_params[s] = {
-                "base_offset": base_offset,
-                "amp1": amp1,
-                "amp2": amp2,
-                "phase1": phase1,
-                "phase2": phase2,
-            }
+        # No simulation parameters; relies on live market data
 
         self._client = None
-        if not config.runtime.dev_mode and REST is not None:
+        if REST is not None and self.config.env.ALPACA_API_KEY and self.config.env.ALPACA_SECRET_KEY:
             self._client = REST(
                 key_id=config.env.ALPACA_API_KEY,
                 secret_key=config.env.ALPACA_SECRET_KEY,
                 base_url=config.env.ALPACA_BASE_URL,
             )
-        # Validation client (used even in simulate mode if keys are present)
+        # Validation client
         self._validation_client = None
         if REST is not None and config.env.ALPACA_API_KEY and config.env.ALPACA_SECRET_KEY:
             try:
@@ -118,14 +102,7 @@ class MarketCollector:
 
     def _get_latest_price(self, symbol: str) -> Optional[float]:
         if self._client is None:
-            # Simulation: symbol-specific deterministic waveform so lines are distinct
-            t = datetime.now(timezone.utc).timestamp()
-            p = self._sim_params.get(symbol) or {"base_offset": 0.0, "amp1": 2.0, "amp2": 0.5, "phase1": 0.0, "phase2": 0.0}
-            base = 400.0 + p["base_offset"]
-            slow = p["amp1"] * math.sin(t / 90.0 + p["phase1"])  # slow component
-            fast = p["amp2"] * math.sin(t / 6.0 + p["phase2"])   # fast wiggle
-            micro = 0.3 * math.sin(t / 2.0 + p["phase1"]/2.0)
-            return base + slow + fast + micro
+            return None
         try:
             # Using quotes endpoint for latest bid/ask midpoint
             quote = self._client.get_latest_quote(symbol)
@@ -170,30 +147,7 @@ class MarketCollector:
     def _is_market_open(self) -> bool:
         """Check if market is currently open."""
         if self._client is None:
-            # Simulation mode - assume market is open during business hours
-            now = datetime.now(timezone.utc)
-            
-            # Convert to ET (Eastern Time)
-            # ET is UTC-5 (EST) or UTC-4 (EDT) - using EDT for simplicity
-            # In production, this should use pytz for proper timezone handling
-            et_offset = -4  # EDT offset (UTC-4)
-            et_hour = now.hour + et_offset
-            if et_hour < 0:
-                et_hour += 24
-            elif et_hour >= 24:
-                et_hour -= 24
-            et_minute = now.minute
-            
-            # Market hours: 9:30 AM - 4:00 PM ET
-            market_start = 9 * 60 + 30  # 9:30 AM in minutes
-            market_end = 16 * 60  # 4:00 PM in minutes
-            current_time = et_hour * 60 + et_minute
-            
-            # Check if it's a weekday (Monday = 0, Sunday = 6)
-            weekday = now.weekday()
-            is_weekday = weekday < 5  # Monday to Friday
-            
-            return is_weekday and market_start <= current_time < market_end
+            return True
         
         try:
             # Try to get market clock from Alpaca API
@@ -218,8 +172,7 @@ class MarketCollector:
 
         Returns True if added, False if invalid/not found.
 
-        In simulate mode (dev_mode), validate via simple ticker regex/length.
-        In live mode, attempt a lightweight API call to confirm existence.
+        Validate via Alpaca if available; otherwise reject.
 
         Per Scott Wilber (canon.yaml), we prioritize deterministic, low-latency
         operation; dynamic additions should be validated quickly and integrated
@@ -255,7 +208,7 @@ class MarketCollector:
                 except Exception:
                     exists = False
         else:
-            # No validation backend available in simulate mode → reject
+            # No validation backend available → reject
             exists = False
 
         if not exists:
@@ -264,20 +217,7 @@ class MarketCollector:
         # Update runtime symbols
         self.config.runtime.symbols.append(s)
 
-        # Initialize simulation params for the new symbol
-        h = int(hashlib.sha256(s.encode()).hexdigest()[:8], 16)
-        base_offset = (h % 4000) / 100.0 - 20.0
-        amp1 = 1.0 + ((h >> 3) % 300) / 100.0
-        amp2 = 0.2 + ((h >> 9) % 80) / 100.0
-        phase1 = ((h >> 15) % 628) / 100.0
-        phase2 = ((h >> 21) % 628) / 100.0
-        self._sim_params[s] = {
-            "base_offset": base_offset,
-            "amp1": amp1,
-            "amp2": amp2,
-            "phase1": phase1,
-            "phase2": phase2,
-        }
+        # No simulation parameters to initialize
 
         # Add default exchange info entry
         # Choose exchange: prefer Alpaca asset-derived if available

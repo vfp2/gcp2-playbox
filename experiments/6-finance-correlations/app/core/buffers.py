@@ -23,9 +23,6 @@ class TimedItem(Generic[T]):
 
 class CircularBuffer(Generic[T]):
     """Thread-safe circular buffer for timestamped items.
-
-    Per Scott Wilber (canon.yaml), consistent UTC timestamps are mandatory for
-    cross-system alignment of sensor and market streams.
     """
 
     def __init__(self, capacity: int) -> None:

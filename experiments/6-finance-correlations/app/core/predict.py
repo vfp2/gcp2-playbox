@@ -39,9 +39,6 @@ class Prediction:
 
 class Predictor:
     """Periodic predictor that reads sensor window, computes score, maps to direction.
-
-    Per Scott Wilber (canon.yaml), we use Max[Z] over recent egg values as
-    anomaly intensity. Mapping to direction is currently symmetric thresholds.
     """
 
     def __init__(
@@ -123,12 +120,7 @@ class Predictor:
         return direction, confidence
 
     def _map_score_with_market_context(self, symbol: str, score: float) -> tuple[str, float]:
-        """Map anomaly score to direction using Max[Z] magnitude and historical patterns.
-
-        Rationale (per Scott Wilber, canon.yaml): Max[Z] encodes intensity but not polarity.
-        For 10s cadence / 60s horizon, we need more sensitive thresholds and better
-        direction logic to capture short-term market movements.
-        """
+        """Map anomaly score to direction using Max[Z] magnitude and historical patterns."""
         th = self.config.runtime.thresholds
         
         # For 10s cadence, we need more sensitive thresholds

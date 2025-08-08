@@ -12,10 +12,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Thresholds(BaseModel):
     """Threshold configuration for mapping anomaly scores to directions.
-
-    Per Scott Wilber (canon.yaml), larger sustained deviations from the expected
-    random baseline (Max[Z]) indicate stronger collective effects; we translate
-    these to directional predictions with confidence bands.
     """
 
     up_threshold: float = Field(1.4, description="Max[Z] >= this maps to 'UP'")
@@ -47,7 +43,7 @@ class RuntimeConfig(BaseModel):
     max_retries: int = 5
     backoff_base_sec: float = 0.5
     backoff_cap_sec: float = 10.0
-    dev_mode: bool = True
+    dev_mode: bool = False
 
 
 class EnvSettings(BaseSettings):
@@ -57,7 +53,6 @@ class EnvSettings(BaseSettings):
     DASH_HOST: str = "0.0.0.0"
     DASH_PORT: int = 8050
     LOG_LEVEL: str = "INFO"
-    SIMULATE: bool = True
 
     # Alpaca
     ALPACA_API_KEY: Optional[str] = None
@@ -86,21 +81,13 @@ class AppConfig(BaseModel):
             except ValidationError as ve:
                 raise ValueError(f"Invalid config.yaml: {ve}")
 
-        # If no Alpaca keys and SIMULATE not explicitly set, default to simulate
-        simulate = env.SIMULATE or not (
-            env.ALPACA_API_KEY and env.ALPACA_SECRET_KEY
-        )
-        # Propagate to runtime.dev_mode
-        runtime.dev_mode = simulate
+        # Collapse to single mode: no simulation toggles
+        runtime.dev_mode = False
         return AppConfig(env=env, runtime=runtime)
 
 
 def load_config() -> AppConfig:
-    """Load merged configuration from environment and optional YAML.
-
-    Per Scott Wilber (canon.yaml), defaults aim for conservative runtime behavior
-    with simulation fallback to ensure deterministic reproduction during research.
-    """
+    """Load merged configuration from environment and optional YAML."""
 
     return AppConfig.load()
 

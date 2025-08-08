@@ -25,7 +25,6 @@ network_timeout_sec: 10
 max_retries: 5
 backoff_base_sec: 0.5
 backoff_cap_sec: 10.0
-dev_mode: true
 
 
 

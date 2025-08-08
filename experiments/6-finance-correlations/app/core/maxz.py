@@ -5,10 +5,6 @@ from typing import Iterable, Sequence
 
 def max_abs_z(values: Iterable[float], expected_mean: float, expected_std: float) -> float:
     """Compute Max[Z] as the maximum absolute z-score across values.
-
-    Per Scott Wilber (canon.yaml), eggs produce nominally independent streams
-    with mean ~100 and variance ~50, so std ~7.071. Max[Z] over a recent window
-    reflects aggregate anomaly intensity.
     """
     inv_std = 0.0 if expected_std == 0 else 1.0 / expected_std
     max_abs = 0.0

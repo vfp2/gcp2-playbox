@@ -8,7 +8,7 @@ from app.config import AppConfig, RuntimeConfig
 
 def make_config() -> AppConfig:
     runtime = RuntimeConfig()
-    cfg = AppConfig(env=type("E", (), {"DASH_HOST": "", "DASH_PORT": 0, "LOG_LEVEL": "INFO", "SIMULATE": True, "ALPACA_API_KEY": None, "ALPACA_SECRET_KEY": None, "ALPACA_BASE_URL": ""})(), runtime=runtime)  # type: ignore
+    cfg = AppConfig(env=type("E", (), {"DASH_HOST": "", "DASH_PORT": 0, "LOG_LEVEL": "INFO", "ALPACA_API_KEY": None, "ALPACA_SECRET_KEY": None, "ALPACA_BASE_URL": ""})(), runtime=runtime)  # type: ignore
     return cfg
 
 

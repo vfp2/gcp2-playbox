@@ -29,10 +29,8 @@ def serve(host: Optional[str] = typer.Option(None), port: Optional[int] = typer.
 
 
 @app.command()
-def run(simulate: bool = typer.Option(False, help="Run in simulation mode"), log_level: str = typer.Option("INFO")) -> None:
+def run(log_level: str = typer.Option("INFO")) -> None:
     cfg = load_config()
-    if simulate:
-        cfg.runtime.dev_mode = True
     setup_logging(log_level)
 
     sensor_buffer: CircularBuffer[SensorSample] = CircularBuffer(capacity=cfg.runtime.sensor_buffer_size)
