@@ -15,7 +15,6 @@ from app.core.tracker import PredictionTracker
 from app.data.gcp_collector import GcpCollector
 from app.data.market_collector import MarketCollector
 from app.utils.logging import setup_logging
-from app.web.server import serve as serve_web
 
 
 app = typer.Typer(add_completion=False)
@@ -25,7 +24,12 @@ app = typer.Typer(add_completion=False)
 def serve(host: Optional[str] = typer.Option(None), port: Optional[int] = typer.Option(None)) -> None:
     cfg = load_config()
     setup_logging(cfg.env.LOG_LEVEL)
-    serve_web(host=host, port=port)
+    # Serve the portal on a single port; the dashboard is mounted under /experiment-6/
+    from gcp_experiments_portal import app as portal_app
+    h = host or cfg.env.DASH_HOST
+    p = cfg.env.DASH_PORT if port is None else port
+    typer.echo(f"Serving portal on http://{h}:{p} (dashboard at /experiment-6/)")
+    portal_app.run_server(host=h, port=p, debug=False)
 
 
 @app.command()

@@ -37,7 +37,7 @@ CYBERPUNK_COLORS = {
 
 
 class DashboardApp:
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(self, config: AppConfig, app: Dash | None = None) -> None:
         self.config = config
         self.sensor_buffer: CircularBuffer[SensorSample] = CircularBuffer(
             capacity=config.runtime.sensor_buffer_size
@@ -59,9 +59,12 @@ class DashboardApp:
         self.last_run_elapsed_seconds = 0  # seconds since last start; freezes on stop
 
         assets_dir = str((Path(__file__).parent / "assets").resolve())
-        self.app: Dash = dash.Dash(
-            __name__, external_stylesheets=[dbc.themes.COSMO], assets_folder=assets_dir
-        )
+        if app is None:
+            self.app: Dash = dash.Dash(
+                __name__, external_stylesheets=[dbc.themes.COSMO], assets_folder=assets_dir
+            )
+        else:
+            self.app = app
         self._layout()
         self._callbacks()
 
@@ -1388,5 +1391,24 @@ def build_dash_app(config: AppConfig | None = None) -> Dash:
     cfg = config or load_config()
     d = DashboardApp(cfg)
     return d.app
+
+
+def mount_dashboard(server, base_path: str = "/experiment-6/", config: AppConfig | None = None) -> Dash:
+    """Mount the dashboard onto an existing Flask server under a base path.
+
+    This enables serving the portal and dashboard on the same port without iframes.
+    """
+    cfg = config or load_config()
+    assets_dir = str((Path(__file__).parent / "assets").resolve())
+    dash_app: Dash = dash.Dash(
+        __name__,
+        server=server,
+        url_base_pathname=base_path,
+        external_stylesheets=[dbc.themes.COSMO],
+        assets_folder=assets_dir,
+    )
+    # Build app logic and callbacks bound to this dash instance
+    DashboardApp(cfg, app=dash_app)
+    return dash_app
 
 

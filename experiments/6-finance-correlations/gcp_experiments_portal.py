@@ -43,6 +43,8 @@ CYBERPUNK_COLORS = {
 # ───────────────────────────── portal app setup ────────────────────────────────
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "GCP Experiments Portal"
+from app.web.dashboard import mount_dashboard  # mount new dashboard under same server
+_mounted = mount_dashboard(app.server, base_path="/experiment-6/")
 
 # Cyberpunk CSS with enhanced matrix-style animations
 app.index_string = '''
@@ -376,15 +378,16 @@ def create_portal_layout():
                         "fontFamily": "'Courier Prime', monospace"
                     }),
                     html.Div([
-                        dcc.Link(
+                        html.A(
                             "→ LAUNCH FINANCIAL ANALYSIS INTERFACE",
-                            href="/experiment-6",
+                            href="/experiment-6/",
+                            target="_self",
                             className="experiment-link",
                             style={
                                 "fontSize": "16px",
                                 "fontFamily": "'Orbitron', monospace",
                                 "padding": "10px 20px",
-                                "border": f"2px solid {CYBERPUNK_COLORS['neon_purple']}",
+                                "border": f"2px solid {CYBERPUNK_COLORS['neon_cyan']}",
                                 "borderRadius": "25px",
                                 "display": "inline-block",
                                 "textDecoration": "none"
@@ -462,23 +465,17 @@ def create_portal_layout():
 # ───────────────────────────── routing logic ────────────────────────────────
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
+    dcc.Location(id='redirect', refresh=True),
     html.Div(id='page-content')
 ])
 
 @app.callback(Output('page-content', 'children'),
               Input('url', 'pathname'))
 def display_page(pathname):
-    if pathname == '/experiment-6':
-        # Import and serve the financial analysis app
-        from gcp_finance_analysis import get_finance_layout, register_finance_callbacks
-        # Register the financial analysis callbacks (only once)
-        if 'finance_callback' not in registered_callbacks:
-            register_finance_callbacks(app)
-            registered_callbacks.add('finance_callback')
-        return get_finance_layout()
-    else:
-        # Default to portal landing page
-        return create_portal_layout()
+    # Always render the portal here; Experiment #6 link navigates to 8052
+    return create_portal_layout()
+
+# Remove redirect callback since we now use a direct anchor link preserving styling
 
 # ───────────────────────────── main server ────────────────────────────────
 if __name__ == "__main__":
