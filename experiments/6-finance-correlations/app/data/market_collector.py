@@ -146,17 +146,18 @@ class MarketCollector:
 
     def _is_market_open(self) -> bool:
         """Check if market is currently open."""
+        # Use Alpaca clock if available; otherwise, report closed.
         if self._client is None:
-            return True
-        
+            return False
         try:
-            # Try to get market clock from Alpaca API
-            # This is a placeholder - actual implementation depends on Alpaca API
-            # clock = self._client.get_clock()
-            # return clock.is_open if hasattr(clock, 'is_open') else True
-            return True
+            clock = getattr(self._client, "get_clock", None)
+            if callable(clock):
+                c = clock()
+                is_open = getattr(c, "is_open", None)
+                return bool(is_open) if isinstance(is_open, bool) else False
         except Exception:
-            return True
+            return False
+        return False
 
     def get_exchange_info(self, symbol: str) -> Optional[ExchangeInfo]:
         """Get exchange information for a symbol."""
