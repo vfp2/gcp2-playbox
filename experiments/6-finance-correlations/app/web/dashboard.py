@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 from datetime import datetime, timezone
+import math
 from typing import Dict, List
 from pathlib import Path
 
@@ -974,7 +975,7 @@ class DashboardApp:
                 headers.extend(["Variance", "StdDev", "Max[Z]"])
 
                 # Build most-recent-first rows
-                body_rows: list[list[str]] = []
+                body_rows = []
                 for item in reversed(snaps):
                     ts = item.timestamp
                     dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
@@ -987,11 +988,12 @@ class DashboardApp:
                             values.append(float("nan"))
                     # Stats across eggs for this row
                     try:
-                        if values:
-                            mean = sum(values) / len(values)
-                            var = sum((v - mean) ** 2 for v in values) / len(values)
+                        finite_vals = [v for v in values if not math.isnan(v)]
+                        if finite_vals:
+                            mean = sum(finite_vals) / len(finite_vals)
+                            var = sum((v - mean) ** 2 for v in finite_vals) / len(finite_vals)
                             std = var ** 0.5
-                            maxz = max_abs_z(values, self.config.runtime.method.expected_mean, self.config.runtime.method.expected_std)
+                            maxz = max_abs_z(finite_vals, self.config.runtime.method.expected_mean, self.config.runtime.method.expected_std)
                         else:
                             var = 0.0
                             std = 0.0
@@ -1000,23 +1002,63 @@ class DashboardApp:
                         var = 0.0
                         std = 0.0
                         maxz = 0.0
-                    row = [dt]
-                    # Per-egg values: exactly the number of egg columns
+                    # Cell styles based on z-score/p-value
+                    def hex_to_rgb(h: str) -> tuple[int, int, int]:
+                        h = h.lstrip('#')
+                        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+                    exp_mean = self.config.runtime.method.expected_mean
+                    exp_std = self.config.runtime.method.expected_std or 1.0
+
+                    def style_for_value(val: float) -> dict:
+                        if val != val:  # NaN
+                            return {"padding": "6px", "textAlign": "right"}
+                        z = abs((val - exp_mean) / exp_std)
+                        # Two-sided p-value from z
+                        try:
+                            phi = 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+                            p_two = 2.0 * (1.0 - phi)
+                        except Exception:
+                            p_two = 1.0
+                        # Choose base color by significance tier
+                        if z >= 3.0:
+                            base = CYBERPUNK_COLORS['neon_pink']
+                        elif z >= 2.0:
+                            base = CYBERPUNK_COLORS['neon_yellow']
+                        elif z >= 1.0:
+                            base = CYBERPUNK_COLORS['neon_cyan']
+                        else:
+                            return {"padding": "6px", "textAlign": "right"}
+                        r, g, b = hex_to_rgb(base)
+                        # Intensity scales with surprise (lower p -> higher alpha)
+                        alpha = max(0.15, min(0.85, 0.2 + 0.6 * (1.0 - min(1.0, p_two * 5.0))))
+                        return {
+                            "padding": "6px",
+                            "textAlign": "right",
+                            "backgroundColor": f"rgba({r},{g},{b},{alpha})",
+                            "border": f"1px solid rgba({r},{g},{b}, {min(0.9, alpha+0.1)})",
+                        }
+
+                    # Build TDs
+                    row_tds = [html.Td(dt, style={"padding": "6px"})]
                     eggs_count = len(headers) - 1 - 3  # Time + 3 stats
                     for idx in range(eggs_count):
+                        cell_val = ""
                         try:
-                            row.append(f"{values[idx]:.0f}")
+                            cell_val = f"{values[idx]:.0f}"
                         except Exception:
-                            row.append("")
-                    row.extend([f"{var:.2f}", f"{std:.2f}", f"{maxz:.2f}"])
-                    body_rows.append(row)
+                            cell_val = ""
+                        row_tds.append(html.Td(cell_val, style=style_for_value(values[idx] if idx < len(values) else float('nan'))))
+                    # Stats columns (right-aligned)
+                    row_tds.append(html.Td(f"{var:.2f}", style={"padding": "6px", "textAlign": "right"}))
+                    row_tds.append(html.Td(f"{std:.2f}", style={"padding": "6px", "textAlign": "right"}))
+                    row_tds.append(html.Td(f"{maxz:.2f}", style={"padding": "6px", "textAlign": "right"}))
+                    body_rows.append(row_tds)
 
                 # Render as plain HTML table (fits content, no scroll)
                 table = html.Table([
                     html.Thead(html.Tr([html.Th(h, style={"padding": "6px", "textAlign": "left"}) for h in headers])),
-                    html.Tbody([
-                        html.Tr([html.Td(cell, style={"padding": "6px"}) for cell in r]) for r in body_rows
-                    ]),
+                    html.Tbody([html.Tr(r) for r in body_rows]),
                 ], style={
                     "width": "100%",
                     "borderCollapse": "collapse",
