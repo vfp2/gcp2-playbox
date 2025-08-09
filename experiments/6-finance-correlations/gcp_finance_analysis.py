@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-GCP Real-Time Market Prediction System (Experiment #6)
-Real-time analysis of Global Consciousness Project egg data to predict
+GCP Market Prediction System (Experiment #6)
+Analysis of Global Consciousness Project egg data to predict
 financial market movements using Max[Z] calculations and time-series analysis.
 
 Architecture:
-- Real-time GCP data collection via BigQuery
+- GCP data collection via official CSV endpoint
 - Market data via Alpaca API
 - Time-binned Max[Z] calculations
 - Direction prediction (Up/Down)
@@ -447,12 +447,12 @@ class PredictionEngine:
 
 # ───────────────────────────── dashboard ─────────────────────────────
 def get_finance_layout():
-    """Return the Dash layout for the real-time prediction dashboard."""
+    """Return the Dash layout for the prediction dashboard."""
     
     return html.Div([
         # Header Section
         html.Div([
-            html.H1("GCP REAL-TIME MARKET PREDICTION SYSTEM", 
+            html.H1("GCP MARKET PREDICTION SYSTEM", 
                    style={
                        "textAlign": "center",
                        "color": CYBERPUNK_COLORS['text_primary'],
@@ -464,7 +464,7 @@ def get_finance_layout():
                        "letterSpacing": "3px"
                    }),
             html.P([
-                "NEURAL INTERFACE: Real-time GCP egg data analysis • ",
+                "NEURAL INTERFACE: GCP egg data analysis • ",
                 "Max[Z] calculations • Market direction prediction • Performance tracking"
             ], style={
                 "fontSize": "16px", 
@@ -555,9 +555,9 @@ def get_finance_layout():
         }),
         dcc.Interval(id="uptime-interval", interval=1000, n_intervals=0),
         
-        # Real-time Data Display
+        # Data Display
         html.Div([
-            html.H3("REAL-TIME DATA", 
+            html.H3("DATA", 
                    style={
                        "color": CYBERPUNK_COLORS['neon_cyan'],
                        "fontSize": "1.2rem",

@@ -1,3 +1,5 @@
+/* Placeholder to keep Dash assets pipeline happy when custom CSS is needed */
+
 #btn-start:disabled, #btn-stop:disabled {
   background-color: #3a3a3f !important;
   border-color: #3a3a3f !important;

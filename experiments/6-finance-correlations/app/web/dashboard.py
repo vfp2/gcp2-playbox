@@ -150,7 +150,7 @@ class DashboardApp:
             ),
             # Header Section
             html.Div([
-                html.H1("GCP REAL-TIME MARKET PREDICTOR - UNDER DEVELOPMENT", 
+                html.H1("GCP MARKET PREDICTOR - UNDER DEVELOPMENT", 
                        style={
                            "textAlign": "center",
                            "color": CYBERPUNK_COLORS['text_primary'],
@@ -162,7 +162,7 @@ class DashboardApp:
                            "letterSpacing": "3px"
                        }),
                 html.P([
-                    "NEURAL INTERFACE: Real-time GCP egg data analysis • ",
+                    "NEURAL INTERFACE: GCP egg data analysis • ",
                     "Max[Z] calculations • Market direction prediction • Performance tracking"
                 ], style={
                     "fontSize": "16px", 
@@ -257,9 +257,9 @@ class DashboardApp:
             }),
             
             
-            # Real-time Data Display
+            # Data Display
             html.Div([
-                html.H3("REAL-TIME DATA", 
+                html.H3("DATA", 
                        style={
                            "color": CYBERPUNK_COLORS['neon_cyan'],
                            "fontSize": "1.2rem",
@@ -423,6 +423,46 @@ class DashboardApp:
                 "padding": "20px",
                 "borderRadius": "15px",
                 "border": f"2px solid {CYBERPUNK_COLORS['neon_yellow']}",
+                "marginBottom": "30px"
+            }),
+
+            # Backtest Controls
+            html.Div([
+                html.H3("BACKTEST", 
+                       style={
+                           "color": CYBERPUNK_COLORS['neon_pink'],
+                           "fontSize": "1.2rem",
+                           "fontWeight": "bold",
+                           "marginBottom": "20px",
+                           "fontFamily": "'Orbitron', monospace"
+                       }),
+                dbc.Row([
+                    dbc.Col([
+                        html.Label("Start UTC (ISO)", style={"color": CYBERPUNK_COLORS['text_primary'], "fontFamily": "'Orbitron', monospace", "fontSize": "0.9rem"}),
+                        dcc.Input(id="bt-start", type="text", placeholder="2024-08-01T13:30:00", debounce=True,
+                                  style={"backgroundColor": CYBERPUNK_COLORS['bg_light'], "color": CYBERPUNK_COLORS['text_primary'], "border": f"1px solid {CYBERPUNK_COLORS['neon_pink']}", "borderRadius": "6px", "padding": "6px 10px", "width": "100%"})
+                    ], width=4),
+                    dbc.Col([
+                        html.Label("End UTC (ISO)", style={"color": CYBERPUNK_COLORS['text_primary'], "fontFamily": "'Orbitron', monospace", "fontSize": "0.9rem"}),
+                        dcc.Input(id="bt-end", type="text", placeholder="2024-08-01T20:00:00", debounce=True,
+                                  style={"backgroundColor": CYBERPUNK_COLORS['bg_light'], "color": CYBERPUNK_COLORS['text_primary'], "border": f"1px solid {CYBERPUNK_COLORS['neon_pink']}", "borderRadius": "6px", "padding": "6px 10px", "width": "100%"})
+                    ], width=4),
+                    dbc.Col([
+                        html.Label("Speed (x)", style={"color": CYBERPUNK_COLORS['text_primary'], "fontFamily": "'Orbitron', monospace", "fontSize": "0.9rem"}),
+                        dcc.Input(id="bt-speed", type="number", value=20, min=1, step=1,
+                                  style={"backgroundColor": CYBERPUNK_COLORS['bg_light'], "color": CYBERPUNK_COLORS['text_primary'], "border": f"1px solid {CYBERPUNK_COLORS['neon_pink']}", "borderRadius": "6px", "padding": "6px 10px", "width": "100%"})
+                    ], width=2),
+                    dbc.Col([
+                        dbc.Button("RUN BACKTEST", id="btn-run-bt", color="primary", size="md",
+                                   style={"backgroundColor": CYBERPUNK_COLORS['neon_pink'], "borderColor": CYBERPUNK_COLORS['neon_pink'], "color": CYBERPUNK_COLORS['bg_dark'], "fontFamily": "'Orbitron', monospace", "fontWeight": "bold"})
+                    ], width=2),
+                ], className="mb-2"),
+                html.Div(id="bt-status", children="Backtest: idle", style={"color": CYBERPUNK_COLORS['neon_pink'], "fontFamily": "'Courier New', monospace"}),
+            ], style={
+                "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
+                "padding": "20px",
+                "borderRadius": "15px",
+                "border": f"2px solid {CYBERPUNK_COLORS['neon_pink']}",
                 "marginBottom": "30px"
             }),
             
@@ -931,6 +971,51 @@ class DashboardApp:
             except Exception:
                 pass
             return "ok"
+
+        # ───────────────────────────── Backtest controls ─────────────────────────────
+        from ..data.backtest import BacktestRunner, BacktestParams
+        self.backtest = BacktestRunner(self.config, self.sensor_buffer, self.market_buffer)
+
+        @self.app.callback(
+            Output("bt-status", "children"),
+            Input("btn-run-bt", "n_clicks"),
+            State("bt-start", "value"),
+            State("bt-end", "value"),
+            State("bt-speed", "value"),
+            prevent_initial_call=True,
+        )
+        def on_run_backtest(n: int | None, start_iso: str | None, end_iso: str | None, speed_val: float | None):
+            try:
+                if not n:
+                    return dash.no_update
+                if self.backtest.is_running():
+                    return f"Backtest: running ({self.backtest.progress()})"
+                if not start_iso or not end_iso:
+                    return "Backtest: missing start/end"
+                speed = float(speed_val or 20)
+                start_utc = datetime.fromisoformat(start_iso).replace(tzinfo=timezone.utc)
+                end_utc = datetime.fromisoformat(end_iso).replace(tzinfo=timezone.utc)
+                params = BacktestParams(
+                    start_utc=start_utc,
+                    end_utc=end_utc,
+                    replay_speed=max(1.0, speed),
+                    window_size_sec=self.config.runtime.method.window_size,
+                    horizon_sec=self.config.runtime.horizon_sec,
+                )
+                self.backtest.run_async(params)
+                return "Backtest: started"
+            except Exception:
+                return "Backtest: error"
+
+        @self.app.callback(Output("bt-status", "children"), Input("tick", "n_intervals"))
+        def poll_bt(_: int) -> str:
+            try:
+                if self.backtest.is_running():
+                    return f"Backtest: running ({self.backtest.progress()})"
+                return f"Backtest: {self.backtest.progress()}"
+            except Exception:
+                return "Backtest: error"
+
 
         # ───────────────────────────── GCP log rendering ─────────────────────────────
         self.gcp_display_paused: bool = False

@@ -175,8 +175,8 @@ class MarketCollector:
 
         Validate via Alpaca if available; otherwise reject.
 
-        Per Scott Wilber (canon.yaml), we prioritize deterministic, low-latency
-        operation; dynamic additions should be validated quickly and integrated
+        Prioritize deterministic, low-latency operation; dynamic additions
+        should be validated quickly and integrated
         without disrupting ongoing calculations.
         """
         s = (symbol or "").strip().upper()

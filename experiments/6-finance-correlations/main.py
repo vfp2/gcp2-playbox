@@ -61,6 +61,60 @@ def run(log_level: str = typer.Option("INFO")) -> None:
         market.stop()
 
 
+@app.command()
+def backtest(
+    start_utc: str = typer.Argument(..., help="ISO8601 UTC start, e.g. 2024-08-01T13:30:00"),
+    end_utc: str = typer.Argument(..., help="ISO8601 UTC end, e.g. 2024-08-01T20:00:00"),
+    speed: float = typer.Option(20.0, help="Replay speed multiplier (e.g., 20x)"),
+) -> None:
+    """Run headless backtest that replays historical GCP and Alpaca market data.
+
+    Uses identical Max[Z] calculation and mapping thresholds as live mode; only
+    the clock is accelerated. Results are emitted into the same buffers used by
+    the dashboard and predictor.
+    """
+    from app.config import load_config
+    from app.core.buffers import CircularBuffer
+    from app.core.predict import MarketTick, SensorSample, Predictor
+    from app.core.tracker import PredictionTracker
+    from app.data.backtest import BacktestParams, BacktestRunner
+
+    from datetime import datetime, timezone
+
+    cfg = load_config()
+    sb: CircularBuffer[SensorSample] = CircularBuffer(cfg.runtime.sensor_buffer_size)
+    mb: CircularBuffer[MarketTick] = CircularBuffer(cfg.runtime.market_buffer_size)
+
+    tracker = PredictionTracker()
+    predictor = Predictor(cfg, sb, mb, tracker.record)
+
+    runner = BacktestRunner(cfg, sb, mb)
+    s = datetime.fromisoformat(start_utc).replace(tzinfo=timezone.utc)
+    e = datetime.fromisoformat(end_utc).replace(tzinfo=timezone.utc)
+    params = BacktestParams(
+        start_utc=s,
+        end_utc=e,
+        replay_speed=max(1.0, float(speed)),
+        window_size_sec=cfg.runtime.method.window_size,
+        horizon_sec=cfg.runtime.horizon_sec,
+    )
+
+    predictor.start()
+    runner.run_async(params)
+    try:
+        # Wait until done
+        while runner.is_running():
+            typer.echo(f"Progress: {runner.progress()}")
+            time.sleep(1.0)
+    finally:
+        predictor.stop()
+    # Print brief stats
+    stats = tracker.stats()
+    for sym, st in stats.items():
+        typer.echo(f"{sym}: total={st.total} correct={st.correct} acc={st.accuracy:.2%}")
+
+
+
 if __name__ == "__main__":
     app()
 

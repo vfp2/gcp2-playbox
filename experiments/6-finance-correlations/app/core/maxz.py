@@ -5,6 +5,9 @@ from typing import Iterable, Sequence
 
 def max_abs_z(values: Iterable[float], expected_mean: float, expected_std: float) -> float:
     """Compute Max[Z] as the maximum absolute z-score across values.
+
+    Uses fixed expected parameters of the GCP RNG network to avoid adaptive
+    normalization that could introduce look-ahead during backtests.
     """
     inv_std = 0.0 if expected_std == 0 else 1.0 / expected_std
     max_abs = 0.0
@@ -23,7 +26,11 @@ def max_abs_z(values: Iterable[float], expected_mean: float, expected_std: float
 def max_abs_z_over_samples(
     samples: Sequence[Sequence[float]], expected_mean: float, expected_std: float
 ) -> float:
-    """Compute Max[Z] across a 2D window of samples (time x eggs)."""
+    """Flatten per-timestamp egg rows and compute overall Max[Z] for the window.
+
+    Concurrent eggs at a timestamp are treated as an ensemble contributing to a
+    single scalar anomaly magnitude over the window.
+    """
     if len(samples) == 0:
         return 0.0
     flat: list[float] = [v for row in samples for v in row]
