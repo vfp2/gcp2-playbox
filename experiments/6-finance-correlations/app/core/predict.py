@@ -78,7 +78,9 @@ class Predictor:
         method = self._registry[method_key].compute
         while not self._stop.is_set():
             start = time.time()
-            now = time.time()
+            # Use data-driven notion of "now" for correct backtests and live mode
+            snaps = self.sensor_buffer.snapshot()
+            now = snaps[-1].timestamp if snaps else time.time()
             window_start = now - self.config.runtime.method.window_size
             samples = [
                 s.value.values for s in self.sensor_buffer.get_window(window_start, now)

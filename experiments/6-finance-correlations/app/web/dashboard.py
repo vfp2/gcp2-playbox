@@ -150,7 +150,7 @@ class DashboardApp:
             ),
             # Header Section
             html.Div([
-                html.H1("GCP REAL-TIME MARKET PREDICTOR - UNDER DEVELOPMENT", 
+                html.H1("GCP MARKET PREDICTOR - UNDER DEVELOPMENT", 
                        style={
                            "textAlign": "center",
                            "color": CYBERPUNK_COLORS['text_primary'],
@@ -162,7 +162,7 @@ class DashboardApp:
                            "letterSpacing": "3px"
                        }),
                 html.P([
-                    "NEURAL INTERFACE: Real-time GCP egg data analysis • ",
+                    "NEURAL INTERFACE: GCP egg data analysis • ",
                     "Max[Z] calculations • Market direction prediction • Performance tracking"
                 ], style={
                     "fontSize": "16px", 
@@ -255,11 +255,56 @@ class DashboardApp:
                 "border": f"2px solid {CYBERPUNK_COLORS['neon_green']}",
                 "marginBottom": "30px"
             }),
-            
-            
-            # Real-time Data Display
+
+            # Backtest / Live Mode Controls
             html.Div([
-                html.H3("REAL-TIME DATA", 
+                html.H3("MODE & BACKTEST", 
+                       style={
+                           "color": CYBERPUNK_COLORS['neon_yellow'],
+                           "fontSize": "1.2rem",
+                           "fontWeight": "bold",
+                           "marginBottom": "20px",
+                           "fontFamily": "'Orbitron', monospace"
+                       }),
+                dbc.Row([
+                    dbc.Col([
+                        html.Label("Mode", style={"color": CYBERPUNK_COLORS['text_primary'], "fontFamily": "'Orbitron', monospace"}),
+                        dcc.RadioItems(
+                            id="mode-select",
+                            options=[{"label": "Live", "value": "live"}, {"label": "Backtest", "value": "backtest"}],
+                            value="live",
+                            labelStyle={"display": "inline-block", "marginRight": "15px"},
+                            inputStyle={"marginRight": "6px"},
+                            style={"color": CYBERPUNK_COLORS['text_primary']},
+                        ),
+                    ], width=3),
+                    dbc.Col([
+                        html.Label("Start (UTC ISO8601)", style={"color": CYBERPUNK_COLORS['text_primary'], "fontFamily": "'Orbitron', monospace"}),
+                        dcc.Input(id="bt-start", type="text", placeholder="2024-06-01T14:30:00Z", debounce=True,
+                                  style={"backgroundColor": CYBERPUNK_COLORS['bg_light'], "color": CYBERPUNK_COLORS['text_primary'], "border": f"1px solid {CYBERPUNK_COLORS['neon_cyan']}", "borderRadius": "6px", "padding": "6px 10px", "width": "100%"}),
+                    ], width=3),
+                    dbc.Col([
+                        html.Label("End (UTC ISO8601)", style={"color": CYBERPUNK_COLORS['text_primary'], "fontFamily": "'Orbitron', monospace"}),
+                        dcc.Input(id="bt-end", type="text", placeholder="2024-06-01T16:00:00Z", debounce=True,
+                                  style={"backgroundColor": CYBERPUNK_COLORS['bg_light'], "color": CYBERPUNK_COLORS['text_primary'], "border": f"1px solid {CYBERPUNK_COLORS['neon_cyan']}", "borderRadius": "6px", "padding": "6px 10px", "width": "100%"}),
+                    ], width=3),
+                    dbc.Col([
+                        html.Label("Speed (x)", style={"color": CYBERPUNK_COLORS['text_primary'], "fontFamily": "'Orbitron', monospace"}),
+                        dcc.Slider(id="bt-speed", min=10, max=3600, step=10, value=600, marks={10: "10x", 60: "60x", 600: "600x", 1200: "1200x", 3600: "3600x"}),
+                    ], width=3),
+                ])
+            ], style={
+                "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
+                "padding": "20px",
+                "borderRadius": "15px",
+                "border": f"2px solid {CYBERPUNK_COLORS['neon_yellow']}",
+                "marginBottom": "30px"
+            }),
+            
+            
+            # Data Summary
+            html.Div([
+                html.H3("STREAM SUMMARY", 
                        style={
                            "color": CYBERPUNK_COLORS['neon_cyan'],
                            "fontSize": "1.2rem",
@@ -894,13 +939,42 @@ class DashboardApp:
                 )
             return children
 
-        @self.app.callback(Output("btn-start", "n_clicks"), Input("btn-start", "n_clicks"))
-        def on_start(n: int | None) -> int | None:
+        @self.app.callback(Output("btn-start", "n_clicks"),
+                           Input("btn-start", "n_clicks"),
+                           State("mode-select", "value"),
+                           State("bt-start", "value"),
+                           State("bt-end", "value"),
+                           State("bt-speed", "value"))
+        def on_start(n: int | None, mode: str | None, bt_start: str | None, bt_end: str | None, bt_speed: int | None) -> int | None:
             if not n:
                 return n
             if not self.running:
-                self.gcp.start()
-                self.market.start()
+                # Parse backtest params
+                def parse_iso8601(val: str | None) -> float | None:
+                    if not val:
+                        return None
+                    try:
+                        s = val.strip()
+                        # Support Z suffix
+                        s = s.replace("Z", "+00:00")
+                        dt = datetime.fromisoformat(s)
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        return dt.timestamp()
+                    except Exception:
+                        return None
+
+                if (mode or "live") == "backtest":
+                    st_ts = parse_iso8601(bt_start)
+                    en_ts = parse_iso8601(bt_end)
+                    sp = float(bt_speed or 600)
+                    # Start collectors in backtest mode
+                    self.gcp.start(start_ts=st_ts, end_ts=en_ts, realtime_interval_sec=1)
+                    self.market.start(start_ts=st_ts, end_ts=en_ts, speed=sp)
+                else:
+                    # Live mode
+                    self.gcp.start()
+                    self.market.start()
                 self.predictor.start()
                 self.running = True
                 self.start_time = datetime.now(timezone.utc)

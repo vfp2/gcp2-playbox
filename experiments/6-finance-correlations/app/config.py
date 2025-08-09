@@ -64,6 +64,31 @@ class AppConfig(BaseModel):
     env: EnvSettings
     runtime: RuntimeConfig
 
+    # Allow tests to pass a simple object for env; coerce to EnvSettings
+    @field_validator("env", mode="before")
+    @classmethod
+    def _coerce_env(cls, v):  # type: ignore[no-untyped-def]
+        if isinstance(v, EnvSettings):
+            return v
+        if isinstance(v, dict):
+            return EnvSettings(**v)
+        # Accept simple attribute bag used in tests
+        try:
+            keys = [
+                "DASH_HOST",
+                "DASH_PORT",
+                "LOG_LEVEL",
+                "ALPACA_API_KEY",
+                "ALPACA_SECRET_KEY",
+                "ALPACA_BASE_URL",
+            ]
+            data = {k: getattr(v, k) for k in keys if hasattr(v, k)}
+            if data:
+                return EnvSettings(**data)
+        except Exception:
+            pass
+        return v
+
     @staticmethod
     def load(config_path: Optional[Path] = None) -> "AppConfig":
         env = EnvSettings()  # loads from environment and .env

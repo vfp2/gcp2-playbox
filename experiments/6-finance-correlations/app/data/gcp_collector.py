@@ -28,6 +28,11 @@ class GcpState:
 
 class GcpCollector:
     """Collector for GCP CSV endpoint with field types 12 and 13.
+    
+    Backtesting extension: provide optional `start_ts` and `end_ts` to
+    `start()` to replay historical samples quickly. During backtest, we
+    paginate by short windows and advance until `end_ts`, emitting samples
+    with their original timestamps into the buffer.
     """
 
     def __init__(self, config: AppConfig, buffer: CircularBuffer[SensorSample]) -> None:
@@ -37,10 +42,14 @@ class GcpCollector:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
-    def start(self) -> None:
+    def start(self, start_ts: Optional[float] = None, end_ts: Optional[float] = None, realtime_interval_sec: int = 5) -> None:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
+        # Stash backtest window on the instance for the thread
+        self._bt_start_ts = start_ts  # type: ignore[attr-defined]
+        self._bt_end_ts = end_ts      # type: ignore[attr-defined]
+        self._rt_interval = realtime_interval_sec  # type: ignore[attr-defined]
         self._thread = threading.Thread(target=self._run, name="GcpCollector", daemon=True)
         self._thread.start()
 
@@ -52,6 +61,43 @@ class GcpCollector:
     def _run(self) -> None:
         session = requests.Session()
         session.headers.update({"User-Agent": "GCP2-RealTime-Predictor/0.1"})
+        # Determine mode
+        bt_start = getattr(self, "_bt_start_ts", None)
+        bt_end = getattr(self, "_bt_end_ts", None)
+        realtime_interval = getattr(self, "_rt_interval", 5)
+
+        if bt_start is not None and bt_end is not None and bt_start < bt_end:
+            # Backtest mode: iterate from start to end in minute chunks
+            cursor = datetime.fromtimestamp(bt_start, tz=timezone.utc)
+            end_dt = datetime.fromtimestamp(bt_end, tz=timezone.utc)
+            while not self._stop.is_set() and cursor < end_dt:
+                try:
+                    y, m, d = cursor.year, cursor.month, cursor.day
+                    # Pull a 60s window from cursor
+                    start_dt = cursor
+                    end_window = min(cursor + timedelta(seconds=60), end_dt)
+                    url = GCP_URL.format(
+                        y=y,
+                        m=str(m).zfill(2),
+                        d=str(d).zfill(2),
+                        sh=str(start_dt.hour).zfill(2),
+                        sm=str(start_dt.minute).zfill(2),
+                        ss=str(start_dt.second).zfill(2),
+                        eh=str(end_window.hour).zfill(2),
+                        em=str(end_window.minute).zfill(2),
+                        es=str(end_window.second).zfill(2),
+                    )
+                    resp = session.get(url, timeout=self.config.runtime.network_timeout_sec)
+                    resp.raise_for_status()
+                    self._parse_csv(resp.text)
+                except Exception:
+                    pass
+                # Advance cursor fast (e.g., 10 minutes per real second)
+                cursor += timedelta(seconds=60)
+                self._stop.wait(timeout=0.1)
+            return
+
+        # Real-time mode
         while not self._stop.is_set():
             try:
                 now = datetime.now(timezone.utc)
@@ -76,7 +122,7 @@ class GcpCollector:
             except Exception:
                 # Skip errors; continue loop
                 pass
-            self._stop.wait(timeout=5)
+            self._stop.wait(timeout=realtime_interval)
 
     def _parse_csv(self, text: str) -> None:
         reader = csv.reader(StringIO(text))
