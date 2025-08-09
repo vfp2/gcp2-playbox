@@ -150,7 +150,7 @@ class DashboardApp:
             ),
             # Header Section
             html.Div([
-                html.H1("GCP REAL-TIME MARKET PREDICTOR", 
+                html.H1("GCP REAL-TIME MARKET PREDICTOR - UNDER DEVELOPMENT", 
                        style={
                            "textAlign": "center",
                            "color": CYBERPUNK_COLORS['text_primary'],
