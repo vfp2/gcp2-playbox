@@ -656,6 +656,56 @@ def get_finance_layout():
                     ])
         ]),
         
+        # ENTROPY SOURCE - GCP EGGS
+        html.Div([
+            html.H3("ENTROPY SOURCE - GCP EGGS", 
+                   style={
+                       "color": CYBERPUNK_COLORS['neon_yellow'],
+                       "fontSize": "1.2rem",
+                       "fontWeight": "bold",
+                       "marginBottom": "12px",
+                       "fontFamily": "'Orbitron', monospace"
+                   }),
+            dbc.Row([
+                dbc.Col([
+                    dbc.Button("Pause Stream", id="btn-pause-gcp", color="secondary", size="sm",
+                               style={
+                                   "backgroundColor": CYBERPUNK_COLORS['bg_light'],
+                                   "borderColor": CYBERPUNK_COLORS['neon_purple'],
+                                   "color": CYBERPUNK_COLORS['text_primary'],
+                                   "fontFamily": "'Orbitron', monospace",
+                                   "fontWeight": "bold"
+                               }),
+                    dbc.Button("Resume", id="btn-resume-gcp", color="secondary", size="sm",
+                               style={
+                                   "marginLeft": "8px",
+                                   "backgroundColor": CYBERPUNK_COLORS['bg_light'],
+                                   "borderColor": CYBERPUNK_COLORS['neon_purple'],
+                                   "color": CYBERPUNK_COLORS['text_primary'],
+                                   "fontFamily": "'Orbitron', monospace",
+                                   "fontWeight": "bold"
+                               })
+                ], width=12)
+            ], className="mb-2"),
+            html.Div(id="gcp-log", style={
+                "backgroundColor": CYBERPUNK_COLORS['bg_medium'],
+                "border": f"1px solid {CYBERPUNK_COLORS['neon_purple']}",
+                "borderRadius": "8px",
+                "padding": "10px",
+                "fontFamily": "'Courier New', monospace",
+                "color": CYBERPUNK_COLORS['text_primary'],
+                "maxHeight": "300px",
+                "overflowY": "auto",
+                "whiteSpace": "pre-wrap"
+            })
+        ], style={
+            "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
+            "padding": "20px",
+            "borderRadius": "15px",
+            "border": f"2px solid {CYBERPUNK_COLORS['neon_yellow']}",
+            "marginTop": "30px"
+        }),
+
         # Back to Portal Link
         html.Div([
             dcc.Link(

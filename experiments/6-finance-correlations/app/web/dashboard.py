@@ -15,7 +15,7 @@ from ..config import AppConfig, load_config
 from ..core.buffers import CircularBuffer
 from ..core.predict import MarketTick, Predictor, SensorSample
 from ..core.tracker import PredictionTracker
-from ..core.maxz import max_abs_z_over_samples
+from ..core.maxz import max_abs_z_over_samples, max_abs_z
 from ..data.gcp_collector import GcpCollector
 from ..data.market_collector import MarketCollector
 
@@ -254,6 +254,7 @@ class DashboardApp:
                 "border": f"2px solid {CYBERPUNK_COLORS['neon_green']}",
                 "marginBottom": "30px"
             }),
+            
             
             # Real-time Data Display
             html.Div([
@@ -559,6 +560,63 @@ class DashboardApp:
                 "padding": "20px",
                 "borderRadius": "15px",
                 "border": f"2px solid {CYBERPUNK_COLORS['neon_green']}",
+                "marginBottom": "30px"
+            }),
+
+            # ENTROPY SOURCE - GCP EGGS (moved to very bottom)
+            html.Div([
+                html.H3("ENTROPY SOURCE - GCP EGGS", 
+                       style={
+                           "color": CYBERPUNK_COLORS['neon_yellow'],
+                           "fontSize": "1.2rem",
+                           "fontWeight": "bold",
+                           "marginBottom": "12px",
+                           "fontFamily": "'Orbitron', monospace"
+                       }),
+                dbc.Row([
+                    dbc.Col([
+                        dbc.Button(
+                            "Pause Stream",
+                            id="btn-pause-gcp",
+                            color="secondary",
+                            size="sm",
+                            style={
+                                "backgroundColor": CYBERPUNK_COLORS['bg_light'],
+                                "borderColor": CYBERPUNK_COLORS['neon_purple'],
+                                "color": CYBERPUNK_COLORS['text_primary'],
+                                "fontFamily": "'Orbitron', monospace",
+                                "fontWeight": "bold"
+                            }
+                        ),
+                        dbc.Button(
+                            "Resume",
+                            id="btn-resume-gcp",
+                            color="secondary",
+                            size="sm",
+                            style={
+                                "marginLeft": "8px",
+                                "backgroundColor": CYBERPUNK_COLORS['bg_light'],
+                                "borderColor": CYBERPUNK_COLORS['neon_purple'],
+                                "color": CYBERPUNK_COLORS['text_primary'],
+                                "fontFamily": "'Orbitron', monospace",
+                                "fontWeight": "bold"
+                            }
+                        )
+                    ], width=12)
+                ], className="mb-2"),
+                html.Div(id="gcp-log", style={
+                    "backgroundColor": CYBERPUNK_COLORS['bg_medium'],
+                    "border": f"1px solid {CYBERPUNK_COLORS['neon_purple']}",
+                    "borderRadius": "8px",
+                    "padding": "10px",
+                    "fontFamily": "'Courier New', monospace",
+                    "color": CYBERPUNK_COLORS['text_primary']
+                })
+            ], style={
+                "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
+                "padding": "20px",
+                "borderRadius": "15px",
+                "border": f"2px solid {CYBERPUNK_COLORS['neon_yellow']}",
                 "marginBottom": "30px"
             }),
             
@@ -872,6 +930,101 @@ class DashboardApp:
             except Exception:
                 pass
             return "ok"
+
+        # ───────────────────────────── GCP log rendering ─────────────────────────────
+        self.gcp_display_paused: bool = False
+
+        @self.app.callback(
+            Output("gcp-log", "children"),
+            Input("tick", "n_intervals"),
+            Input("btn-pause-gcp", "n_clicks"),
+            Input("btn-resume-gcp", "n_clicks"),
+        )
+        def update_gcp_log(_: int, pause_clicks: int | None, resume_clicks: int | None):
+            try:
+                # Toggle pause/resume state
+                ctx = dash.callback_context
+                if ctx.triggered:
+                    trig = ctx.triggered[0]['prop_id'].split('.')[0]
+                    if trig == 'btn-pause-gcp':
+                        self.gcp_display_paused = True
+                    elif trig == 'btn-resume-gcp':
+                        self.gcp_display_paused = False
+
+                if self.gcp_display_paused:
+                    return dash.no_update
+
+                # Get last N samples from sensor buffer
+                snaps = self.sensor_buffer.snapshot()[-20:]
+                if not snaps:
+                    return html.Div("No GCP samples yet")
+
+                # Determine egg headers from collector active set (if available)
+                egg_headers = self.gcp.get_active_eggs() if hasattr(self.gcp, 'get_active_eggs') else []
+
+                # Compose table headers: Time | eggs... | Variance | StdDev | Max[Z]
+                headers = ["Time"]
+                if egg_headers:
+                    headers.extend(egg_headers)
+                else:
+                    # fallback generic names based on first row length
+                    if snaps:
+                        ncols = len(snaps[-1].value.values)
+                        headers.extend([f"egg_{i+1}" for i in range(ncols)])
+                headers.extend(["Variance", "StdDev", "Max[Z]"])
+
+                # Build most-recent-first rows
+                body_rows: list[list[str]] = []
+                for item in reversed(snaps):
+                    ts = item.timestamp
+                    dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+                    # Convert per-egg values robustly to floats; non-parsable -> NaN placeholder
+                    values: list[float] = []
+                    for v in item.value.values:
+                        try:
+                            values.append(float(v))
+                        except Exception:
+                            values.append(float("nan"))
+                    # Stats across eggs for this row
+                    try:
+                        if values:
+                            mean = sum(values) / len(values)
+                            var = sum((v - mean) ** 2 for v in values) / len(values)
+                            std = var ** 0.5
+                            maxz = max_abs_z(values, self.config.runtime.method.expected_mean, self.config.runtime.method.expected_std)
+                        else:
+                            var = 0.0
+                            std = 0.0
+                            maxz = 0.0
+                    except Exception:
+                        var = 0.0
+                        std = 0.0
+                        maxz = 0.0
+                    row = [dt]
+                    # Per-egg values: exactly the number of egg columns
+                    eggs_count = len(headers) - 1 - 3  # Time + 3 stats
+                    for idx in range(eggs_count):
+                        try:
+                            row.append(f"{values[idx]:.0f}")
+                        except Exception:
+                            row.append("")
+                    row.extend([f"{var:.2f}", f"{std:.2f}", f"{maxz:.2f}"])
+                    body_rows.append(row)
+
+                # Render as plain HTML table (fits content, no scroll)
+                table = html.Table([
+                    html.Thead(html.Tr([html.Th(h, style={"padding": "6px", "textAlign": "left"}) for h in headers])),
+                    html.Tbody([
+                        html.Tr([html.Td(cell, style={"padding": "6px"}) for cell in r]) for r in body_rows
+                    ]),
+                ], style={
+                    "width": "100%",
+                    "borderCollapse": "collapse",
+                    "tableLayout": "auto",
+                })
+                return table
+            except Exception:
+                return ""
 
         @self.app.callback(Output("symbol-info", "children"), Input("tick", "n_intervals"), State("client-tz", "data"))
         def update_symbol_info(_: int, client_tz: dict | None):

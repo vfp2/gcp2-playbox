@@ -113,6 +113,17 @@ class GcpCollector:
             return
         self.buffer.add(SensorSample(values=values), timestamp=ts)
 
+    # ───────────────────────────── accessors ─────────────────────────────
+    def get_active_eggs(self) -> List[str]:
+        """Return current active egg identifiers as user-friendly names.
+
+        Example: ["egg_1", "egg_2", ...]
+        """
+        try:
+            return [f"egg_{e}" for e in list(self._state.active_eggs)]
+        except Exception:
+            return []
+
 
 
 
