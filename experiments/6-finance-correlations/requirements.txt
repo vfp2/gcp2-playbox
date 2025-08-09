@@ -32,3 +32,7 @@ alpaca-trade-api==3.0.2
 
 # HTTP requests for GCP data
 requests==2.31.0
+
+typer
+pydantic
+pydantic_settings
