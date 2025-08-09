@@ -35,6 +35,23 @@ def setup_logging(level: str = "INFO") -> None:
     root.handlers.clear()
     root.addHandler(handler)
 
+    # Quiet noisy third-party loggers (e.g., Dash/Werkzeug request logs)
+    try:
+        werk = logging.getLogger("werkzeug")
+        werk.handlers.clear()
+        werk.propagate = False
+        werk.setLevel(logging.CRITICAL)
+    except Exception:
+        pass
+
+    try:
+        dash_logger = logging.getLogger("dash")
+        dash_logger.handlers.clear()
+        dash_logger.propagate = False
+        dash_logger.setLevel(logging.CRITICAL)
+    except Exception:
+        pass
+
 
 
 
