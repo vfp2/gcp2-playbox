@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from datetime import datetime, timezone
 from typing import Dict, List
+from pathlib import Path
 
 import dash
 import dash_bootstrap_components as dbc
@@ -53,15 +54,99 @@ class DashboardApp:
         self.gcp = GcpCollector(config=config, buffer=self.sensor_buffer)
         self.market = MarketCollector(config=config, buffer=self.market_buffer)
         self.running = False
+        self.start_time = None  # type: datetime | None
+        self.last_run_elapsed_seconds = 0  # seconds since last start; freezes on stop
 
+        assets_dir = str((Path(__file__).parent / "assets").resolve())
         self.app: Dash = dash.Dash(
-            __name__, external_stylesheets=[dbc.themes.COSMO]
+            __name__, external_stylesheets=[dbc.themes.COSMO], assets_folder=assets_dir
         )
         self._layout()
         self._callbacks()
 
     def _layout(self) -> None:
         self.app.layout = html.Div([
+            # Inline CSS via dcc (html.Style is not available in dash.html)
+            dcc.Markdown(
+                children="""
+<style>
+/* Darker disabled state */
+#btn-start:disabled, #btn-stop:disabled {
+  background-color: #3a3a3f !important;
+  border-color: #3a3a3f !important;
+  color: #888888 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Smooth transitions */
+#btn-start, #btn-stop {
+  transition: box-shadow 120ms ease, transform 120ms ease, filter 120ms ease;
+}
+
+/* Hover effects (enabled only) */
+#btn-start:not(:disabled):hover {
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.7), 0 0 18px rgba(0, 255, 136, 0.35) !important; /* #00ff88 */
+  transform: translateY(-1px);
+}
+#btn-stop:not(:disabled):hover {
+  box-shadow: 0 0 10px rgba(255, 0, 110, 0.7), 0 0 18px rgba(255, 0, 110, 0.35) !important; /* #ff006e */
+  transform: translateY(-1px);
+}
+
+/* Pressed (active) effects (enabled only) */
+#btn-start:not(:disabled):active,
+#btn-start:not(:disabled).active,
+#btn-start:not(:disabled):focus:active {
+  transform: translateY(2px) !important;
+  box-shadow: inset 0 3px 8px rgba(0,0,0,0.55) !important;
+  filter: brightness(0.92) !important;
+}
+#btn-stop:not(:disabled):active,
+#btn-stop:not(:disabled).active,
+#btn-stop:not(:disabled):focus:active {
+  transform: translateY(2px) !important;
+  box-shadow: inset 0 3px 8px rgba(0,0,0,0.55) !important;
+  filter: brightness(0.92) !important;
+}
+/* Pointer cursor */
+#btn-start:not(:disabled), #btn-stop:not(:disabled) {
+  cursor: pointer;
+}
+</style>
+""",
+                dangerously_allow_html=True,
+            ),
+            dcc.Markdown(
+                children="""
+<script>
+(function(){
+  function attachButtonEffects(){
+    var start = document.getElementById('btn-start');
+    var stop = document.getElementById('btn-stop');
+    if(!start || !stop) return false;
+    function addEffects(el, glowColor){
+      if(el._effectsBound) return; // avoid duplicate bindings
+      el.addEventListener('mouseenter', function(){ if(!el.disabled){ el.style.boxShadow = '0 0 10px '+glowColor+', 0 0 18px '+glowColor.replace('0.7','0.35'); el.style.transform = 'translateY(-1px)'; }});
+      el.addEventListener('mouseleave', function(){ el.style.boxShadow=''; el.style.transform=''; });
+      el.addEventListener('mousedown', function(){ if(!el.disabled){ el.style.transform = 'translateY(2px)'; el.style.boxShadow = 'inset 0 3px 8px rgba(0,0,0,0.55)'; el.style.filter = 'brightness(0.92)'; }});
+      el.addEventListener('mouseup', function(){ if(!el.disabled){ el.style.transform = 'translateY(-1px)'; el.style.boxShadow = ''; el.style.filter = ''; }});
+      el._effectsBound = true;
+    }
+    addEffects(start, 'rgba(0, 255, 136, 0.7)');
+    addEffects(stop, 'rgba(255, 0, 110, 0.7)');
+    return true;
+  }
+  var tries = 0; var timer = setInterval(function(){
+    tries += 1;
+    if(attachButtonEffects() || tries > 50){ clearInterval(timer); }
+  }, 100);
+})();
+</script>
+""",
+                dangerously_allow_html=True,
+            ),
             # Header Section
             html.Div([
                 html.H1("GCP REAL-TIME MARKET PREDICTOR", 
@@ -118,7 +203,9 @@ class DashboardApp:
                                 "borderColor": CYBERPUNK_COLORS['neon_green'],
                                 "color": CYBERPUNK_COLORS['bg_dark'],
                                 "fontFamily": "'Orbitron', monospace",
-                                "fontWeight": "bold"
+                                "fontWeight": "bold",
+                                "outline": "none",
+                                "boxShadow": "0 0 0 rgba(0,0,0,0)",
                             }
                         )
                     ], width=3),
@@ -134,7 +221,9 @@ class DashboardApp:
                                 "borderColor": CYBERPUNK_COLORS['neon_pink'],
                                 "color": CYBERPUNK_COLORS['bg_dark'],
                                 "fontFamily": "'Orbitron', monospace",
-                                "fontWeight": "bold"
+                                "fontWeight": "bold",
+                                "outline": "none",
+                                "boxShadow": "0 0 0 rgba(0,0,0,0)",
                             }
                         )
                     ], width=3),
@@ -148,6 +237,14 @@ class DashboardApp:
                                     "textAlign": "center",
                                     "padding": "10px"
                                 })
+                        ,
+                        html.Div(id="uptime", children="UPTIME: 00:00:00",
+                                 style={
+                                     "color": CYBERPUNK_COLORS['neon_cyan'],
+                                     "fontFamily": "'Courier New', monospace",
+                                     "fontSize": "0.95rem",
+                                     "textAlign": "center",
+                                 })
                     ], width=6)
                 ], className="mb-3")
             ], style={
@@ -466,7 +563,7 @@ class DashboardApp:
             }),
             
             # Hidden elements
-            dcc.Interval(id="tick", interval=2000, n_intervals=0),
+            dcc.Interval(id="tick", interval=1000, n_intervals=0),
             html.Div(id="config-ack", style={"display": "none"}),
             # Browser timezone store (filled by clientside callback)
             dcc.Store(id="client-tz", storage_type="memory"),
@@ -498,6 +595,27 @@ class DashboardApp:
         @self.app.callback(Output("status-text", "children"), Input("tick", "n_intervals"))
         def status(_: int) -> str:
             return "SYSTEM ONLINE" if self.running else "SYSTEM OFFLINE"
+
+        @self.app.callback(
+            Output("btn-start", "disabled"), Output("btn-stop", "disabled"), Input("tick", "n_intervals")
+        )
+        def disable_buttons(_: int) -> tuple[bool, bool]:
+            # When running, disable start; when stopped, disable stop
+            return self.running, (not self.running)
+
+        @self.app.callback(Output("uptime", "children"), Input("tick", "n_intervals"))
+        def uptime(_: int) -> str:
+            try:
+                if self.running and self.start_time is not None:
+                    delta = datetime.now(timezone.utc) - self.start_time
+                    total = int(delta.total_seconds())
+                    self.last_run_elapsed_seconds = total
+                total = int(self.last_run_elapsed_seconds)
+                h, rem = divmod(total, 3600)
+                m, s = divmod(rem, 60)
+                return f"UPTIME: {h:02d}:{m:02d}:{s:02d}"
+            except Exception:
+                return "UPTIME: 00:00:00"
 
         # Capture browser timezone and local datetime on the client
         self.app.clientside_callback(
@@ -726,6 +844,9 @@ class DashboardApp:
                 self.market.start()
                 self.predictor.start()
                 self.running = True
+                self.start_time = datetime.now(timezone.utc)
+                # reset timer on start (do not reset on stop)
+                self.last_run_elapsed_seconds = 0
             return n
 
         @self.app.callback(Output("btn-stop", "n_clicks"), Input("btn-stop", "n_clicks"))
@@ -737,6 +858,8 @@ class DashboardApp:
                 self.gcp.stop()
                 self.market.stop()
                 self.running = False
+                # freeze timer: keep last_run_elapsed_seconds; do not reset here
+                self.start_time = None
             return n
 
         @self.app.callback(Output("config-ack", "children"),

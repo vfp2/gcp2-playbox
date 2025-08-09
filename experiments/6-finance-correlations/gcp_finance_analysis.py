@@ -535,6 +535,14 @@ def get_finance_layout():
                                 "fontSize": "1.1rem",
                                 "textAlign": "center",
                                 "padding": "10px"
+                            }),
+                    html.Div(id="uptime-display", children="UPTIME: 00:00:00",
+                            style={
+                                "color": CYBERPUNK_COLORS['neon_cyan'],
+                                "fontFamily": "'Courier New', monospace",
+                                "fontSize": "1.0rem",
+                                "textAlign": "center",
+                                "padding": "0 10px 10px 10px"
                             })
                 ], width=6)
             ], className="mb-3")
@@ -545,6 +553,7 @@ def get_finance_layout():
             "border": f"2px solid {CYBERPUNK_COLORS['neon_green']}",
             "marginBottom": "30px"
         }),
+        dcc.Interval(id="uptime-interval", interval=1000, n_intervals=0),
         
         # Real-time Data Display
         html.Div([
@@ -692,36 +701,51 @@ def register_finance_callbacks(app):
     @app.callback(
         [Output("system-status", "children"),
          Output("start-system-btn", "disabled"),
-         Output("stop-system-btn", "disabled")],
+         Output("stop-system-btn", "disabled"),
+         Output("uptime-display", "children")],
         [Input("start-system-btn", "n_clicks"),
-         Input("stop-system-btn", "n_clicks")]
+         Input("stop-system-btn", "n_clicks"),
+         Input("uptime-interval", "n_intervals")]
     )
-    def control_system(start_clicks, stop_clicks):
-        global system_running
+    def control_system(start_clicks, stop_clicks, _ticks):
+        global system_running, system_start_time
         
+        if 'system_start_time' not in globals():
+            system_start_time = None
+
         ctx = dash.callback_context
-        if not ctx.triggered:
-            return "SYSTEM OFFLINE", False, True
-        
-        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-        
-        if button_id == "start-system-btn" and not system_running:
-            # Start the system
-            gcp_collector.start()
-            market_collector.start()
-            prediction_engine.start()
-            system_running = True
-            return "SYSTEM ONLINE", True, False
-        
-        elif button_id == "stop-system-btn" and system_running:
-            # Stop the system
-            gcp_collector.stop()
-            market_collector.stop()
-            prediction_engine.stop()
-            system_running = False
-            return "SYSTEM OFFLINE", False, True
-        
-        return ("SYSTEM ONLINE" if system_running else "SYSTEM OFFLINE"), system_running, not system_running
+        if ctx.triggered:
+            button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+            if button_id == "start-system-btn" and not system_running:
+                gcp_collector.start()
+                market_collector.start()
+                prediction_engine.start()
+                system_running = True
+                system_start_time = datetime.now()
+            elif button_id == "stop-system-btn" and system_running:
+                gcp_collector.stop()
+                market_collector.stop()
+                prediction_engine.stop()
+                system_running = False
+                system_start_time = None
+
+        # Compute uptime text
+        if system_running and system_start_time is not None:
+            delta = datetime.now() - system_start_time
+            total_seconds = int(delta.total_seconds())
+            h = total_seconds // 3600
+            m = (total_seconds % 3600) // 60
+            s = total_seconds % 60
+            uptime_text = f"UPTIME: {h:02d}:{m:02d}:{s:02d}"
+        else:
+            uptime_text = "UPTIME: 00:00:00"
+
+        return (
+            "SYSTEM ONLINE" if system_running else "SYSTEM OFFLINE",
+            system_running,
+            not system_running,
+            uptime_text,
+        )
     
     @app.callback(
         [Output("gcp-stats", "children"),
