@@ -1145,12 +1145,18 @@ class DashboardApp:
             except Exception:
                 return ""
 
-        @self.app.callback(Output("symbol-info", "children"), Input("tick", "n_intervals"), State("client-tz", "data"))
-        def update_symbol_info(_: int, client_tz: dict | None):
+        @self.app.callback(
+            Output("symbol-info", "children"),
+            Input("tick", "n_intervals"),
+            State("client-tz", "data"),
+            State("symbol-select", "value"),
+        )
+        def update_symbol_info(_: int, client_tz: dict | None, selected_symbols: list[str] | None):
             """Update symbol information display."""
             try:
                 # Simple approach - just use the symbols from config
                 symbols = self.config.runtime.symbols
+                selected_set = set(selected_symbols or symbols)
                 
                 symbol_divs = []
                 for symbol in symbols:
@@ -1158,7 +1164,7 @@ class DashboardApp:
                     checkbox = dcc.Checklist(
                         id={"type": "symbol-checkbox", "symbol": symbol},
                         options=[{"label": "", "value": symbol}],
-                        value=[symbol],
+                        value=[symbol] if symbol in selected_set else [],
                         style={"marginRight": "10px"}
                     )
                     
@@ -1219,27 +1225,33 @@ class DashboardApp:
             Output("symbol-select", "value"),
             Input({"type": "symbol-checkbox", "symbol": ALL}, "value"),
             Input("tick", "n_intervals"),
+            State("symbol-select", "value"),
         )
-        def sync_symbol_select(values_lists: list[list[str]] | None, _: int):
-            # Flatten selected values from all per-symbol checklists
+        def sync_symbol_select(values_lists: list[list[str]] | None, _: int, prev_selected: list[str] | None):
+            # Preserve user selection across ticks; only change on checkbox input.
             try:
                 symbols_all = list(self.config.runtime.symbols)
                 options = [{"label": s, "value": s} for s in symbols_all]
+
+                ctx = dash.callback_context
+                triggered = ctx.triggered[0]["prop_id"].split(".")[0] if ctx and ctx.triggered else ""
+
+                if triggered == "tick" or not values_lists:
+                    # Just update options; keep prior selection
+                    return options, (prev_selected or symbols_all)
+
+                # Flatten selected values from all per-symbol checklists
                 selected: list[str] = []
-                if values_lists:
-                    for v in values_lists:
-                        if v:
-                            selected.extend(v)
-                # Default to all if nothing explicitly selected
-                if not selected:
-                    selected = symbols_all
+                for v in values_lists:
+                    if v:
+                        selected.extend(v)
                 # Deduplicate while preserving order
-                seen = set()
+                seen: set[str] = set()
                 selected_unique = [s for s in selected if not (s in seen or seen.add(s))]
                 return options, selected_unique
             except Exception:
                 syms = list(self.config.runtime.symbols)
-                return ([{"label": s, "value": s} for s in syms], syms)
+                return ([{"label": s, "value": s} for s in syms], prev_selected or syms)
 
         @self.app.callback(
             Output("new-symbol-input", "value"),

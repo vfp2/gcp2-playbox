@@ -116,7 +116,7 @@ class MarketCollector:
                         self.buffer.add(MarketTick(price=price, symbol=symbol))
             except Exception:
                 pass
-            self._stop.wait(timeout=2)
+            self._stop.wait(timeout=1)
 
     # ───────────────────────────── backtest helpers ─────────────────────────────
     def _run_backtest(self, start_ts: float, end_ts: float, speed: float) -> None:
@@ -226,12 +226,10 @@ class MarketCollector:
         if self._client is None:
             return None
         try:
-            # Using quotes endpoint for latest bid/ask midpoint
-            quote = self._client.get_latest_quote(symbol)
-            bid = float(quote.bidprice)
-            ask = float(quote.askprice)
-            if bid > 0 and ask > 0:
-                return (bid + ask) / 2.0
+            t = self._client.get_latest_trade(symbol)
+            px = getattr(t, "price", None)
+            if px is not None and float(px) > 0:
+                return float(px)
         except Exception:
             return None
         return None
