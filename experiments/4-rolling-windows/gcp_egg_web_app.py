@@ -194,6 +194,20 @@ def render_sql(start_ts: float, window_s: int, bins: int, use_pseudo_entropy: bo
 
     return sql
 
+# ───────────────────────────── significance envelope ───────────────────────
+def compute_pointwise_p05_envelope(cumulative_seconds: pd.Series) -> np.ndarray:
+    """Return the pointwise two-sided 95% (p=0.05) envelope for the cumulative
+    sum S(T) = Σ((Stouffer Z)^2 − 1), evaluated at cumulative elapsed seconds T.
+
+    Under the null, per-second increments X_t = (Stouffer Z_t)^2 − 1 have mean 0
+    and variance Var(χ²(1) − 1) = 2. Therefore Var[S(T)] ≈ 2T, so a pointwise
+    two-sided p = 0.05 band is ± z_{0.975} · sqrt(2T). See canon.yaml for the
+    variance model and testing convention.
+    """
+    z_0_975 = 1.959963984540054
+    cum_seconds_clipped = np.maximum(cumulative_seconds.to_numpy(dtype=float), 0.0)
+    return z_0_975 * np.sqrt(2.0 * cum_seconds_clipped)
+
 # ───────────────────────────── query helper ────────────────────────────────
 CACHE = dc.Cache("./bq_cache", size_limit=2 * 1024**3)
 
@@ -1331,20 +1345,15 @@ def create_egg_callback(app_instance):
         # Create single-axis plot for cumulative deviation of χ² based on Stouffer Z
         fig = go.Figure()
         
-        # Calculate parabolic probability curves for p=0.05 significance
-        # Scale the curves to match the actual y-axis range of the data
-        # For cumulative deviation, we need to scale based on the actual data variance
-        data_std = np.std(df["cum_stouffer_z"]) if len(df["cum_stouffer_z"]) > 1 else 1.0
-        data_range = np.max(df["cum_stouffer_z"]) - np.min(df["cum_stouffer_z"]) if len(df["cum_stouffer_z"]) > 1 else 100.0
-        
-        # Scale factor based on the actual data characteristics
-        # For p=0.05 significance, use a scaling that reflects the actual data variance
-        scale_factor = data_std * 2.0  # Adjust this multiplier as needed for proper scaling
-        k = scale_factor
-        
-        x_curve = x
-        upper_curve = k * np.sqrt(x_curve)
-        lower_curve = -k * np.sqrt(x_curve)
+        # Calculate pointwise 95% (p=0.05) envelope under null using cumulative seconds
+        # Under the null: Var(χ²(1) − 1) = 2 ⇒ Var[Σ X_t over T seconds] = 2T
+        # Envelope: ± z_{0.975} √(2T), evaluated at cumulative seconds T_i
+        cumulative_seconds = df["seconds_in_bin"].cumsum() if not df.empty else pd.Series([], dtype=float)
+        envelope = compute_pointwise_p05_envelope(cumulative_seconds)
+        # Plot x for envelope in the same display units as data
+        x_curve = cumulative_seconds / conversion_factor if len(cumulative_seconds) else cumulative_seconds
+        upper_curve = envelope
+        lower_curve = -envelope
         
         # Add parabolic probability curves only if checkbox is enabled
         if show_parabolic_curve_enabled:
