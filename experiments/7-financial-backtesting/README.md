@@ -47,7 +47,7 @@ python experiments/7-financial-backtesting/ingest_gcp1_bigquery.py \
 - Ingest GCP 2 CSV to Parquet (per `group_id`, filter known-bad days):
 ```
 python experiments/7-financial-backtesting/ingest_gcp2_csv.py \
-  --csv /home/soliax/dev/vfp2/gcp2-playbox/experiments/7-financial-backtesting/gcp2.csv
+  --csv /home/soliax/dev/vfp2/gcp2-playbox/experiments/7-financial-backtesting/gcp2.net_netvar_2-15-24_7-15-24.csv
 ```
 
 - Download Alpaca second bars for tickers and export Parquet:
