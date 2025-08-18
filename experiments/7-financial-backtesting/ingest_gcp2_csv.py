@@ -79,9 +79,11 @@ def clean_and_partition(df: pd.DataFrame, out_dir: str) -> None:
     rows_after_dedup = len(df)
     logger.info(f"Removed {initial_rows - rows_after_dedup:,} duplicate rows, {rows_after_dedup:,} remaining")
     
+    # Create date column for partitioning but don't add it to keep list
+    df["date"] = pd.to_datetime(df["time_epoch"], unit="s", utc=True).dt.strftime("%Y-%m-%d")
+    
     # Filter bad dates
     logger.info("Filtering out bad dates...")
-    df["date"] = pd.to_datetime(df["time_epoch"], unit="s", utc=True).dt.strftime("%Y-%m-%d")
     rows_before_filter = len(df)
     df = df[~df["date"].isin(BAD_DATES)]
     rows_after_filter = len(df)
@@ -95,7 +97,6 @@ def clean_and_partition(df: pd.DataFrame, out_dir: str) -> None:
         "netvar_count_xor_alt",
         "reporting_devices",
     ]
-    df = df[keep]
     logger.info(f"Kept {len(keep)} columns: {', '.join(keep)}")
 
     # Partition by date then group_id; no compression
@@ -113,7 +114,8 @@ def clean_and_partition(df: pd.DataFrame, out_dir: str) -> None:
         target = os.path.join(out_dir, f"date={date_str}", f"group_id={group_id}")
         os.makedirs(target, exist_ok=True)
         
-        part_out = part.drop(columns=["date"]).sort_values("time_epoch")
+        # Drop the date column before saving, keeping only the columns we want
+        part_out = part[keep].sort_values("time_epoch")
         output_file = os.path.join(target, "gcp2.parquet")
         
         part_out.to_parquet(output_file, engine="pyarrow", compression=None, index=False)
