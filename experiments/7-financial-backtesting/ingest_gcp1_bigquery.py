@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import argparse
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -8,6 +9,16 @@ import pandas as pd
 from google.cloud import bigquery
 from google.cloud.bigquery_storage_v1 import BigQueryReadClient
 from dotenv import load_dotenv
+
+
+def setup_logging():
+    """Setup logging configuration for progress tracking"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    return logging.getLogger(__name__)
 
 
 def _parse_dt(s: str) -> datetime:
@@ -19,7 +30,7 @@ def _parse_dt(s: str) -> datetime:
         raise argparse.ArgumentTypeError(f"Invalid datetime: {s}")
 
 
-def query_gcp1_seconds(bq: bigquery.Client, bqs: BigQueryReadClient, start: datetime, end: datetime, project: str, dataset: str, table: str, filter_zero: bool) -> pd.DataFrame:
+def query_gcp1_seconds(bq: bigquery.Client, bqs: BigQueryReadClient, start: datetime, end: datetime, project: str, dataset: str, table: str, filter_zero: bool, logger: logging.Logger) -> pd.DataFrame:
     # Mirrors logic from experiments/4-rolling-windows/gcp_egg_web_app.py
     # 1) ASCII() per egg column, 2) z-score with mu=100, sigma=7.0712, 3) Stouffer Z, 4) (Z^2 - 1) per second
     # We will output columns: ts (UTC), chi2_stouffer (float), active_eggs (int)
@@ -43,6 +54,10 @@ def query_gcp1_seconds(bq: bigquery.Client, bqs: BigQueryReadClient, start: date
         "egg_3107","egg_3108","egg_3115","egg_3142","egg_3240","egg_3247","egg_4002","egg_4101","egg_4234",
         "egg_4251"
     ]
+
+    logger.info(f"Building SQL query for {len(EGG_COLS)} egg columns")
+    logger.info(f"Query time range: {start} to {end}")
+    logger.info(f"Filter zero values: {filter_zero}")
 
     ascii_block = ",\n".join([f"    ASCII({c}) AS {c}" for c in EGG_COLS])
 
@@ -82,29 +97,71 @@ def query_gcp1_seconds(bq: bigquery.Client, bqs: BigQueryReadClient, start: date
     ORDER BY ts
     """
 
+    logger.info("Executing BigQuery job...")
     job = bq.query(sql, job_config=bigquery.QueryJobConfig(
         query_parameters=[
             bigquery.ScalarQueryParameter("start_ts", "TIMESTAMP", start),
             bigquery.ScalarQueryParameter("end_ts", "TIMESTAMP", end),
         ]
     ))
+    
+    logger.info(f"BigQuery job ID: {job.job_id}")
+    logger.info("Waiting for job completion...")
+    
+    # Wait for the job to complete
+    job.result()
+    
+    logger.info("Job completed successfully. Converting to DataFrame...")
     df = job.to_dataframe(bqstorage_client=bqs, create_bqstorage_client=True)
+    
+    logger.info(f"DataFrame created with {len(df)} rows and {len(df.columns)} columns")
+    logger.info(f"DataFrame columns: {list(df.columns)}")
+    logger.info(f"DataFrame shape: {df.shape}")
+    
+    if not df.empty:
+        logger.info(f"Time range in data: {df['ts'].min()} to {df['ts'].max()}")
+        logger.info(f"Active eggs range: {df['active_eggs'].min()} to {df['active_eggs'].max()}")
+        logger.info(f"Chi2 Stouffer range: {df['chi2_stouffer'].min():.4f} to {df['chi2_stouffer'].max():.4f}")
+    
     return df
 
 
-def write_parquet(df: pd.DataFrame, out_dir: str) -> None:
+def write_parquet(df: pd.DataFrame, out_dir: str, logger: logging.Logger) -> None:
+    logger.info(f"Preparing to write parquet files to {out_dir}")
+    
     df = df.copy()
     df["date"] = pd.to_datetime(df["ts"], utc=True).dt.strftime("%Y-%m-%d")
+    
+    # Get unique dates for partitioning
+    unique_dates = df["date"].unique()
+    logger.info(f"Found {len(unique_dates)} unique dates for partitioning")
+    
+    total_rows = 0
     # Partition by date
-    for date_str, part in df.groupby("date"):
+    for i, date_str in enumerate(unique_dates, 1):
+        part = df[df["date"] == date_str]
         target = os.path.join(out_dir, f"date={date_str}")
         os.makedirs(target, exist_ok=True)
-        part.drop(columns=["date"], inplace=True)
-        part.to_parquet(os.path.join(target, "gcp1.parquet"), engine="pyarrow", compression=None, index=False)
+        
+        part_copy = part.drop(columns=["date"])
+        output_file = os.path.join(target, "gcp1.parquet")
+        
+        logger.info(f"Writing date {i}/{len(unique_dates)}: {date_str} ({len(part)} rows) to {output_file}")
+        part_copy.to_parquet(output_file, engine="pyarrow", compression=None, index=False)
+        
+        total_rows += len(part)
+        logger.info(f"Completed {date_str}: {len(part)} rows written")
+    
+    logger.info(f"Parquet writing completed. Total {total_rows} rows written across {len(unique_dates)} date partitions")
 
 
 def main():
     load_dotenv()
+    
+    # Setup logging
+    logger = setup_logging()
+    logger.info("Starting GCP1 BigQuery ingestion script")
+    
     parser = argparse.ArgumentParser(description="Ingest GCP1 BigQuery to Parquet for Nautilus")
     parser.add_argument("--start", required=True, type=_parse_dt, help="UTC start ISO (e.g. 1998-08-05T00:00:00Z)")
     parser.add_argument("--end", required=True, type=_parse_dt, help="UTC end ISO")
@@ -115,15 +172,32 @@ def main():
     parser.add_argument("--out", default="experiments/7-financial-backtesting/parquet_out/gcp1")
     args = parser.parse_args()
 
+    logger.info(f"Arguments parsed:")
+    logger.info(f"  Start: {args.start}")
+    logger.info(f"  End: {args.end}")
+    logger.info(f"  Project: {args.project}")
+    logger.info(f"  Dataset: {args.dataset}")
+    logger.info(f"  Table: {args.table}")
+    logger.info(f"  Filter zero: {args.filter_zero}")
+    logger.info(f"  Output directory: {args.out}")
+
+    logger.info("Initializing BigQuery clients...")
     bq = bigquery.Client(project=args.project)
     bqs = BigQueryReadClient()
+    logger.info("BigQuery clients initialized successfully")
 
-    df = query_gcp1_seconds(bq, bqs, args.start, args.end, args.project, args.dataset, args.table, args.filter_zero)
+    logger.info("Executing GCP1 query...")
+    df = query_gcp1_seconds(bq, bqs, args.start, args.end, args.project, args.dataset, args.table, args.filter_zero, logger)
+    
     if df.empty:
-        print("No rows returned.")
+        logger.warning("No rows returned from query. Exiting.")
         return
-    write_parquet(df, args.out)
-    print(f"Wrote GCP1 parquet to {args.out}")
+    
+    logger.info("Writing data to parquet format...")
+    write_parquet(df, args.out, logger)
+    
+    logger.info(f"GCP1 ingestion completed successfully!")
+    logger.info(f"Output location: {args.out}")
 
 
 if __name__ == "__main__":
