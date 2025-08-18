@@ -169,7 +169,7 @@ def main():
     parser.add_argument("--dataset", default="eggs_us")
     parser.add_argument("--table", default="basket")
     parser.add_argument("--filter-zero", action="store_true", default=True, help="Exclude zero trial sums")
-    parser.add_argument("--out", default="experiments/7-financial-backtesting/parquet_out/gcp1")
+    parser.add_argument("--out", default="parquet_out/gcp1")
     args = parser.parse_args()
 
     logger.info(f"Arguments parsed:")

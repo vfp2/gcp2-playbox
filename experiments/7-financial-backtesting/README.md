@@ -26,7 +26,7 @@ pip install -r experiments/7-financial-backtesting/requirements.txt
 
 ### Paths
 - GCP2 CSV directory (contains the CSV): `/home/soliax/dev/vfp2/gcp2-playbox/experiments/7-financial-backtesting`
-- Parquet output: `experiments/7-financial-backtesting/parquet_out/`
+- Parquet output: `parquet_out/`
 
 ### Commands
 

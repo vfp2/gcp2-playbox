@@ -219,7 +219,7 @@ def main():
     parser.add_argument("--tickers", required=True, help="Comma-separated (e.g., IVV,VOO,VXX,SPY,UVXY)")
     parser.add_argument("--start-epoch", required=True, type=_parse_epoch)
     parser.add_argument("--end-epoch", required=True, type=_parse_epoch)
-    parser.add_argument("--out", default="experiments/7-financial-backtesting/parquet_out/market")
+    parser.add_argument("--out", default="parquet_out/market")
     parser.add_argument("--data-type", choices=["bars", "trades"], default="bars", 
                        help="Data type: 'bars' for minute-level OHLCV, 'trades' for per-second trade data")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")

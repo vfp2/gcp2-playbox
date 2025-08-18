@@ -143,7 +143,7 @@ def main():
     
     parser = argparse.ArgumentParser(description="Ingest GCP2 CSV to Parquet for Nautilus")
     parser.add_argument("--csv", required=True, help="Absolute path to GCP2 CSV")
-    parser.add_argument("--out", default="experiments/7-financial-backtesting/parquet_out/gcp2")
+    parser.add_argument("--out", default="parquet_out/gcp2")
     args = parser.parse_args()
 
     logger.info("=" * 60)
