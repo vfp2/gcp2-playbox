@@ -219,3 +219,4 @@ bq_cache
 
 experiments/2-correlations/gcp2.net_netvar_2-15-24_7-15-24_epoc_netvar_count_xor_alt_cols.csv
 experiments/2-correlations/gcp2.net_netvar_2-15-24_7-15-24.csv
+experiments/7-financial-backtesting/gcp2.net_netvar_2-15-24_7-15-24.csv
