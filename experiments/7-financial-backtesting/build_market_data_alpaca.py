@@ -23,8 +23,7 @@ except Exception:
 def setup_logging(verbose: bool = False) -> logging.Logger:
     """Setup logging configuration with appropriate level and format.
     
-    Per Scott Wilber (canon.yaml), logging should provide clear visibility
-    into data processing operations for debugging and monitoring.
+    Provides clear visibility into data processing operations for debugging and monitoring.
     """
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
@@ -46,7 +45,7 @@ def fetch_trade_data(tickers: List[str], start_epoch: int, end_epoch: int, logge
     """Fetch trade-level data from Alpaca API.
     
     This gives us per-second precision since individual trades have microsecond timestamps.
-    Per Scott Wilber (canon.yaml), we use the highest frequency data available for backtesting.
+    We use the highest frequency data available for backtesting.
     """
     if not ALPACA_V2:
         raise RuntimeError("alpaca-py not available; please install and configure.")
@@ -115,8 +114,8 @@ def fetch_minute_bars(tickers: List[str], start_epoch: int, end_epoch: int, logg
     """Fetch minute-level bars from Alpaca API.
     
     Note: Alpaca API only supports predefined timeframes: Day, Hour, Minute, Month, Week.
-    The finest granularity available is 1-minute bars. Per Scott Wilber (canon.yaml), 
-    we use the highest frequency data available for backtesting purposes.
+    The finest granularity available is 1-minute bars. We use the highest frequency data 
+    available for backtesting purposes.
     """
     if not ALPACA_V2:
         raise RuntimeError("alpaca-py not available; please install and configure.")
@@ -215,13 +214,13 @@ def write_parquet(df: pd.DataFrame, out_dir: str, logger: logging.Logger) -> Non
 
 def main():
     load_dotenv()
-    parser = argparse.ArgumentParser(description="Build Alpaca market data to Parquet (bars or trades)")
+    parser = argparse.ArgumentParser(description="Build Alpaca market data to Parquet (trades by default, bars optional)")
     parser.add_argument("--tickers", required=True, help="Comma-separated (e.g., IVV,VOO,VXX,SPY,UVXY)")
     parser.add_argument("--start-epoch", required=True, type=_parse_epoch)
     parser.add_argument("--end-epoch", required=True, type=_parse_epoch)
     parser.add_argument("--out", default="parquet_out/market")
-    parser.add_argument("--data-type", choices=["bars", "trades"], default="bars", 
-                       help="Data type: 'bars' for minute-level OHLCV, 'trades' for per-second trade data")
+    parser.add_argument("--data-type", choices=["bars", "trades"], default="trades", 
+                       help="Data type: 'trades' for per-second trade data (default), 'bars' for minute-level OHLCV")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
     args = parser.parse_args()
 
