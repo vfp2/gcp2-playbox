@@ -57,17 +57,53 @@ python experiments/7-financial-backtesting/build_market_data_alpaca.py \
   --start-epoch 1707955200 --end-epoch 1721179439
 ```
 
-- Run Nautilus backtest (scaffold):
+- Run GCP2 backtest with per-second price data:
 ```
 python experiments/7-financial-backtesting/run_backtest.py \
   --tickers IVV,VOO,VXX,SPY,UVXY \
   --z-window 3600 --lag-min -3600 --lag-max 3600 --lag-step 300
 ```
 
+**Updated Features:**
+- Now works with per-second price data from Alpaca (instead of bars)
+- Comprehensive logging to both console and `backtest.log` file
+- Processes all GCP2 groups for each ticker
+- Generates detailed summary statistics (PnL, Sharpe ratio, max drawdown, etc.)
+- Outputs organized by `symbol/SYMBOL/group_id/NNN/` structure
+
 Notes:
 - GCP2 uses `netvar_count_xor_alt` (fully whitened). We drop specified outlier dates and skip missing/duplicate seconds.
 - Partitions: `date=YYYY-MM-DD/group_id=NNN` for GCP2; `date=YYYY-MM-DD` for GCP1; symbols for market data.
 - No compression is used for Parquet, as requested.
 - All datasets now use consistent time range: 2024-02-15 00:00:00 UTC to 2024-07-17 23:59:59 UTC
+
+### Backtest Output Structure
+
+The backtest script generates organized output in `parquet_out/backtests/`:
+
+```
+parquet_out/backtests/
+├── symbol=IVV/
+│   ├── group_id=1/
+│   │   ├── backtest.parquet    # Full backtest data (price, signal, position, PnL)
+│   │   └── summary.json        # Performance metrics
+│   ├── group_id=137/
+│   │   ├── backtest.parquet
+│   │   └── summary.json
+│   └── ...
+├── symbol=VOO/
+│   ├── group_id=1/
+│   │   ├── backtest.parquet
+│   │   └── summary.json
+│   └── ...
+└── ...
+```
+
+Each `summary.json` contains:
+- Trading period (start/end dates)
+- Total PnL and Sharpe ratio (annualized)
+- Maximum drawdown
+- Total number of trades
+- Win rate percentage
 
 

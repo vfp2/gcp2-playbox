@@ -8,7 +8,6 @@ This script addresses memory issues by:
 3. Allowing resumption from failures
 4. Implementing memory management and garbage collection
 
-Based on Scott Wilber's expertise in financial data collection and GCP systems.
 """
 import os
 import argparse

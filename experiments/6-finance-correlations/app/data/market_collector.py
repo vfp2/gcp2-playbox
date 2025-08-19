@@ -37,8 +37,7 @@ class MarketCollector:
     """Collect market prices from Alpaca.
 
     Backtesting extension: start(start_ts, end_ts, speed) replays historical
-    prices between the timestamps at accelerated speed. Per Scott Wilber
-    (canon.yaml), design prioritizes determinism and low latency; we fetch
+    prices between the timestamps at accelerated speed. We fetch
     bars up-front and stream them in timestamp order, avoiding jitter.
     """
 
@@ -125,8 +124,7 @@ class MarketCollector:
         We aim for predictable playback. Sleep per step is scaled by `speed`:
         a 60-second bar sleeps ~1.0/speed seconds (e.g., speed=600 → 0.1s/bar).
 
-        Per Scott Wilber (canon.yaml), batch-fetch upfront to avoid runtime
-        stalls and stream deterministically.
+        Batch-fetch upfront to avoid runtime stalls and stream deterministically.
         """
         if self._client is None:
             return
@@ -295,7 +293,7 @@ class MarketCollector:
 
         Validate via Alpaca if available; otherwise reject.
 
-        Per Scott Wilber (canon.yaml), we prioritize deterministic, low-latency
+        We prioritize deterministic, low-latency
         operation; dynamic additions should be validated quickly and integrated
         without disrupting ongoing calculations.
         """
