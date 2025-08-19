@@ -201,8 +201,7 @@ def compute_pointwise_p05_envelope(cumulative_seconds: pd.Series) -> np.ndarray:
 
     Under the null, per-second increments X_t = (Stouffer Z_t)^2 − 1 have mean 0
     and variance Var(χ²(1) − 1) = 2. Therefore Var[S(T)] ≈ 2T, so a pointwise
-    two-sided p = 0.05 band is ± z_{0.975} · sqrt(2T). See canon.yaml for the
-    variance model and testing convention.
+    two-sided p = 0.05 band is ± z_{0.975} · sqrt(2T).
     """
     z_0_975 = 1.959963984540054
     cum_seconds_clipped = np.maximum(cumulative_seconds.to_numpy(dtype=float), 0.0)

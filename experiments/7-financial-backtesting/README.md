@@ -57,19 +57,38 @@ python experiments/7-financial-backtesting/build_market_data_alpaca.py \
   --start-epoch 1707955200 --end-epoch 1721179439
 ```
 
-- Run GCP2 backtest with per-second price data:
-```
+- Run backtest with different dataset options:
+
+**GCP1 only (Network Coherence proxy):**
+```bash
 python experiments/7-financial-backtesting/run_backtest.py \
   --tickers IVV,VOO,VXX,SPY,UVXY \
+  --dataset gcp1 \
+  --z-window 3600 --lag-min -3600 --lag-max 3600 --lag-step 300
+```
+
+**GCP2 only (netvar_count_xor_alt):**
+```bash
+python experiments/7-financial-backtesting/run_backtest.py \
+  --tickers IVV,VOO,VXX,SPY,UVXY \
+  --dataset gcp2 \
+  --z-window 3600 --lag-min -3600 --lag-max 3600 --lag-step 300
+```
+
+**Both GCP1 and GCP2 datasets:**
+```bash
+python experiments/7-financial-backtesting/run_backtest.py \
+  --tickers IVV,VOO,VXX,SPY,UVXY \
+  --dataset both \
   --z-window 3600 --lag-min -3600 --lag-max 3600 --lag-step 300
 ```
 
 **Updated Features:**
 - Now works with per-second price data from Alpaca (instead of bars)
 - Comprehensive logging to both console and `backtest.log` file
-- Processes all GCP2 groups for each ticker
+- Processes GCP1 data (Network Coherence proxy) and/or GCP2 data (all groups)
 - Generates detailed summary statistics (PnL, Sharpe ratio, max drawdown, etc.)
-- Outputs organized by `symbol/SYMBOL/group_id/NNN/` structure
+- Outputs organized by `symbol/SYMBOL/dataset_type/` structure
 
 Notes:
 - GCP2 uses `netvar_count_xor_alt` (fully whitened). We drop specified outlier dates and skip missing/duplicate seconds.
@@ -84,15 +103,21 @@ The backtest script generates organized output in `parquet_out/backtests/`:
 ```
 parquet_out/backtests/
 ├── symbol=IVV/
-│   ├── group_id=1/
-│   │   ├── backtest.parquet    # Full backtest data (price, signal, position, PnL)
-│   │   └── summary.json        # Performance metrics
-│   ├── group_id=137/
+│   ├── gcp1/                           # GCP1 results (if --dataset gcp1 or both)
+│   │   ├── backtest.parquet            # Full backtest data (price, signal, position, PnL)
+│   │   └── summary.json                # Performance metrics
+│   ├── gcp2_group_id=1/                # GCP2 results (if --dataset gcp2 or both)
+│   │   ├── backtest.parquet
+│   │   └── summary.json
+│   ├── gcp2_group_id=137/
 │   │   ├── backtest.parquet
 │   │   └── summary.json
 │   └── ...
 ├── symbol=VOO/
-│   ├── group_id=1/
+│   ├── gcp1/                           # GCP1 results
+│   │   ├── backtest.parquet
+│   │   └── summary.json
+│   ├── gcp2_group_id=1/                # GCP2 results
 │   │   ├── backtest.parquet
 │   │   └── summary.json
 │   └── ...
@@ -105,5 +130,18 @@ Each `summary.json` contains:
 - Maximum drawdown
 - Total number of trades
 - Win rate percentage
+
+### Dataset Types
+
+**GCP1 (Network Coherence proxy):**
+- Uses the published Stouffer-Z method for Network Coherence
+- Uses `chi2_stouffer` column from the data
+- Single dataset (no group_id partitioning)
+- Based on EGG data from BigQuery
+
+**GCP2 (netvar_count_xor_alt):**
+- Uses the XOR alternative netvar count method
+- Partitioned by group_id (1, 34, 41, 75, 137)
+- Based on CSV data with whitened netvars
 
 
