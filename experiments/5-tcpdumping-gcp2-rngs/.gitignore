@@ -1,0 +1,11 @@
+# Logs
+*.log
+
+# Certificates and keys
+*.crt
+*.key
+*.pem
+
+# Python cache
+__pycache__/
+*.pyc
