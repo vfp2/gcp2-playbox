@@ -1,7 +1,11 @@
-# Experiment 5: TCP Dumping GCP2 RNGs
+# Experiment 5: GCP2.NET RNG MQTT Traffic Interception
+
+## Status: ✅ SUCCESS
+
+Successfully intercepted MQTT traffic from GCP2.NET RNG device by extracting and registering the device's client certificate in our own AWS IoT Core account.
 
 ## Overview
-Investigation into intercepting and analyzing MQTT traffic from GCP2.NET RNG devices connecting to AWS IoT Core.
+Investigation into intercepting and analyzing MQTT traffic from GCP2.NET RNG devices connecting to AWS IoT Core. After exploring multiple approaches, we successfully captured the device's client certificate from packet analysis and registered it in our AWS account, allowing us to monitor all MQTT traffic.
 
 ## Discovered Configuration
 - **Device**: GCP2.NET RNG
@@ -30,43 +34,53 @@ Error: [SSL: TLSV1_ALERT_UNKNOWN_CA] tlsv1 alert unknown ca
 
 ## Files
 
-### Analysis Tools
+### Solution Scripts
+- **`extract_client_cert.py`** - Extract device's client certificate from PCAP ⭐
+- **`monitor_mqtt.sh`** - Real-time monitoring of AWS IoT Core metrics ⭐
 - `analyze_pcap.py` - Extract MQTT connection details from pcap files
 - `decode_sni.py` - Parse and display TLS SNI (Server Name Indication) from pcap
 
-### Proxy Implementations
-- `test_cert_validation.py` - Test if device validates SSL certificates
-- `sni_proxy.py` - SNI-based transparent proxy (no decryption, metadata only)
-- `aws_local_proxy.py` - AWS IoT proxy with TLS termination (requires valid AWS cert)
+### Alternative Approaches (Explored but not used)
+- `mqtt_proxy.py` - EC2 proxy implementation (abandoned due to cert hostname mismatch)
+- `aws_local_proxy.py` - Local AWS IoT proxy (same issue)
+- `sni_proxy.py` - SNI-based transparent proxy (no decryption capability)
+- `test_cert_validation.py` - Proof that device validates SSL certificates
 
 ### Documentation
+- **`FINAL_SOLUTION.md`** - Complete technical documentation of the working solution ⭐
+- `EC2_PROXY_SETUP.md` - EC2 proxy setup steps (alternative approach)
+- `SELF_HOSTED_PROXY_SETUP.md` - Self-hosted proxy documentation
 - `PROXY_OPTIONS.md` - Comparison of different proxy approaches
 - `SNI_EXPLAINED.md` - Technical explanation of SNI in TLS handshakes
+- `NEXT_STEPS.md` - Planning notes from earlier phases
 
-## Next Steps
+## Final Solution
 
-### Option A: AWS EC2 Proxy (Recommended for full decryption)
-1. Create AWS IoT Core endpoint in personal AWS account
-2. Obtain valid AWS certificate for endpoint
-3. Deploy proxy on EC2 instance
-4. Use DNS spoofing to redirect device traffic
-5. Log and forward decrypted MQTT messages
+**See [FINAL_SOLUTION.md](FINAL_SOLUTION.md) for complete documentation.**
 
-**Pros:**
-- Full MQTT decryption (topics, payloads, RNG data)
-- Device trusts certificate (valid AWS CA)
-- Complete protocol analysis
+### Quick Summary
 
-**Cost:** ~$5/month for t3.micro EC2 instance
+1. **Extracted device's client certificate** from packet capture (TLS 1.2 handshake)
+2. **Registered certificate** in our AWS IoT Core account (us-east-2)
+3. **DNS spoofed** original endpoint to resolve to our IoT endpoint IP
+4. **Device connects successfully** - authenticates with its client cert
+5. **All MQTT traffic visible** in AWS IoT Core console
 
-### Option B: SNI Proxy (Metadata only)
-Use `sni_proxy.py` to capture:
-- Connection timing and frequency
-- Packet sizes
-- Encrypted traffic patterns
+### Current Status
+- ✅ Device connecting (4+ successful connections observed)
+- ✅ Device subscribing to topics
+- ✅ CloudWatch logging enabled
+- ⏳ Waiting for device to publish RNG data (likely buffering)
 
-**Pros:** Free, runs locally
-**Cons:** Cannot see MQTT message content
+### Monitoring
+```bash
+# Real-time monitoring
+./monitor_mqtt.sh
+
+# AWS Console - MQTT Test Client
+# Subscribe to topic: #
+# https://us-east-2.console.aws.amazon.com/iot/home?region=us-east-2#/test
+```
 
 ## Network Setup Used
 

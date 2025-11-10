@@ -1,12 +1,23 @@
 # Logs
 *.log
+logs/
 
-# Certificates and keys
+# Certificates and keys (NEVER commit these!)
 *.crt
 *.key
 *.pem
+*.der
+*.bin
 cert-output.json
+certs/
 
 # Python cache
 __pycache__/
 *.pyc
+
+# PCAP files (optional - can be large)
+*.pcap
+*.pcapng
+
+# Claude CLI
+.claude/
