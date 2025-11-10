@@ -5,6 +5,7 @@
 *.crt
 *.key
 *.pem
+cert-output.json
 
 # Python cache
 __pycache__/
