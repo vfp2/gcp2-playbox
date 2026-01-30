@@ -9,6 +9,16 @@ This experiment replicates and extends Holmberg's research on using GCP Max[Z] m
 - **Holmberg (2020-2024)**: Found correlations between GCP1 Max[Z] and VIX, with out-of-sample trading simulations showing 5-14% excess returns
 - **GCP2 Adaptation**: Applies the methodology to GCP2's network_coherence metric using rolling Z-score normalization
 
+## What You Can Explore
+
+### GCP Analysis Portal (Experiment 4)
+
+The main visualization app lets you explore cumulative chi-squared deviation from randomness using either GCP1's Stouffer Z method or GCP2's rolling Z-normalized network coherence. You can compare the global network against individual clusters or drill down to any of the 473 individual RNG devices to see if specific units show stronger anomalies. The graph plots cumulative Σ(Z² - 1) over time with a 95% significance envelope - when the line breaks outside the envelope, you're seeing statistically significant departure from randomness. You can scrub through 25+ years of data, adjust bin sizes, and toggle between data sources to visually compare how GCP1 eggs vs GCP2 devices behave during the same events.
+
+### Holmberg Financial Analysis
+
+The Holmberg dashboard replicates Ulf Holmberg's Max[Z] market correlation research. It computes daily peak |Z| from GCP2's network coherence, then runs Pearson correlations against VIX levels, VIX changes, and SPY returns - you can also plug in any custom ticker to test the hypothesis on crypto, commodities, or individual stocks. The lag analysis chart shows whether GCP anomalies lead or follow market movements by up to 5 days. The backtesting simulation lets you test a simple strategy: go long SPY when Max[Z] exceeds a percentile threshold (P50-P95), hold for 1-10 days, and compare against buy-and-hold. You can set a custom start date to run proper out-of-sample tests and see if Holmberg's reported 5-14% excess returns hold up.
+
 ## Applications
 
 ### 1. Holmberg Analysis Dashboard (`holmberg_dashboard.py`)
