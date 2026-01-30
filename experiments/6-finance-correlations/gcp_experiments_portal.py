@@ -379,7 +379,23 @@ def create_portal_layout():
                     }),
                     html.Div([
                         html.A(
-                            "→ LAUNCH FINANCIAL ANALYSIS INTERFACE",
+                            "→ HOLMBERG ANALYSIS (GCP2)",
+                            href="http://localhost:8052/",
+                            target="_blank",
+                            className="experiment-link",
+                            style={
+                                "fontSize": "16px",
+                                "fontFamily": "'Orbitron', monospace",
+                                "padding": "10px 20px",
+                                "border": f"2px solid {CYBERPUNK_COLORS['neon_green']}",
+                                "borderRadius": "25px",
+                                "display": "inline-block",
+                                "textDecoration": "none",
+                                "marginRight": "15px"
+                            }
+                        ),
+                        html.A(
+                            "→ REAL-TIME PREDICTOR",
                             href="/experiment-6/",
                             target="_self",
                             className="experiment-link",

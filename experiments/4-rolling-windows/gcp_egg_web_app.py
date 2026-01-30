@@ -29,6 +29,8 @@ import numpy as np
 import diskcache as dc
 from google.cloud import bigquery
 from google.cloud.bigquery_storage_v1 import BigQueryReadClient
+from pathlib import Path
+from functools import lru_cache
 
 # ───────────────────────────── configuration ──────────────────────────────
 GCP_PROJECT  = os.getenv("GCP_PROJECT", "gcpingcp")
@@ -36,9 +38,9 @@ GCP_DATASET  = os.getenv("GCP_DATASET", "eggs_us")
 GCP_TABLE    = os.getenv("GCP_TABLE", "basket")          # raw second-level table
 BASELINE_TBL = os.getenv("BASELINE_TABLE", "baseline_individual_nozeros")
 
-# Date range for sliders (3rd Aug 1998 to 31 July 2025)
+# Date range for sliders (3rd Aug 1998 to 31 Dec 2027)
 DATE_MIN = _dt(1998, 8, 3, tzinfo=_tz.utc).date()
-DATE_MAX = _dt(2025, 7, 31, tzinfo=_tz.utc).date()
+DATE_MAX = _dt(2027, 12, 31, tzinfo=_tz.utc).date()
 # Default to start of 911 Nelson experiment (first plane hit WTC at 8:46 AM EDT = 12:46 PM UTC)
 # DEFAULT_DATE = _dt(2011, 3, 11, tzinfo=_tz.utc).date()
 # DEFAULT_TIME = _dt(2011, 3, 11, 5, 36, 0, tzinfo=_tz.utc).time()  # 2:46 PM JST = 05:36 AM UTC
@@ -60,6 +62,109 @@ _PRINTED_KEYS = set()
 
 bq_client  = bigquery.Client(project=GCP_PROJECT)
 bqs_client = BigQueryReadClient()
+
+# ───────────────────────────── GCP2 configuration ──────────────────────────
+GCP2_DATA_DIR = Path(__file__).parent.parent.parent / "gcp2.net-rng-data-downloaded"
+GCP2_NETWORK_DIR = GCP2_DATA_DIR / "network"
+GCP2_DEVICE_DIR = GCP2_DATA_DIR / "devices"
+GCP2_DATE_MIN = _dt(2024, 3, 1, tzinfo=_tz.utc).date()
+ROLLING_WINDOW_SECONDS = 3600  # 1 hour for rolling Z-score
+MIN_ROLLING_PERIODS = 360      # 6 minutes minimum
+
+# GCP2 network options (folder_name, display_name)
+GCP2_NETWORKS = [
+    ("global_network", "Global Network"),
+    ("cluster_cape_town_za", "Cape Town, ZA"),
+    ("cluster_edmonton", "Edmonton"),
+    ("cluster_hong_kong", "Hong Kong"),
+    ("cluster_hyderabad", "Hyderabad"),
+    ("cluster_london", "London"),
+    ("cluster_los_angeles", "Los Angeles"),
+    ("cluster_madrid", "Madrid"),
+    ("cluster_mexico_city", "Mexico City"),
+    ("cluster_new_york_city", "New York City"),
+    ("cluster_puerto_rico", "Puerto Rico"),
+    ("cluster_são_paulo", "São Paulo"),
+    ("cluster_seoul_korea", "Seoul, Korea"),
+    ("cluster_stockolm", "Stockholm"),
+    ("cluster_tel_aviv", "Tel Aviv"),
+]
+
+# GCP2 individual device options - dynamically populated + hardcoded examples
+def get_gcp2_device_options():
+    """Get list of available individual device IDs."""
+    devices = []
+    if GCP2_DEVICE_DIR.exists():
+        for device_dir in sorted(GCP2_DEVICE_DIR.iterdir(), key=lambda x: int(x.name) if x.name.isdigit() else 0):
+            if device_dir.is_dir() and device_dir.name.isdigit():
+                device_id = device_dir.name
+                devices.append((f"device_{device_id}", f"Device {device_id}"))
+    # Hardcoded device IDs (user-requested)
+    hardcoded_devices = [
+        ("device_498", "Device 498"),
+    ]
+    for folder, name in hardcoded_devices:
+        if (folder, name) not in devices:
+            devices.append((folder, name))
+    # Sort devices by numeric ID
+    devices.sort(key=lambda x: int(x[0].replace("device_", "")) if x[0].replace("device_", "").isdigit() else 999999)
+    return devices
+
+GCP2_DEVICES = get_gcp2_device_options()
+
+def get_gcp2_latest_date():
+    """Get the latest available GCP2 data date."""
+    global_network_dir = GCP2_NETWORK_DIR / "global_network"
+    if not global_network_dir.exists():
+        return "2024-present"
+
+    latest_year = 0
+    latest_month = 0
+
+    for year_dir in global_network_dir.iterdir():
+        if not year_dir.is_dir():
+            continue
+        try:
+            year = int(year_dir.name)
+        except ValueError:
+            continue
+
+        for csv_file in year_dir.glob("*.csv"):
+            if ".csv.zip" in csv_file.name:
+                continue
+            parts = csv_file.stem.split("_")
+            try:
+                month = int(parts[-1])
+                if year > latest_year or (year == latest_year and month > latest_month):
+                    latest_year = year
+                    latest_month = month
+            except (ValueError, IndexError):
+                continue
+
+    if latest_year > 0:
+        month_names = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        return f"{month_names[latest_month]} {latest_year}"
+    return "2024-present"
+
+GCP2_LATEST_DATE = get_gcp2_latest_date()
+
+def get_gcp1_latest_date():
+    """Query BigQuery for the actual latest GCP1 data date."""
+    try:
+        query = f"""
+        SELECT MAX(recorded_at) as latest_date
+        FROM `{GCP_PROJECT}.{GCP_DATASET}.{GCP_TABLE}`
+        """
+        result = bq_client.query(query).result()
+        for row in result:
+            if row.latest_date:
+                return row.latest_date.strftime('%b %Y')
+        return DATE_MAX.strftime('%b %Y')
+    except Exception as e:
+        print(f"Error querying GCP1 latest date: {e}")
+        return DATE_MAX.strftime('%b %Y')
+
+GCP1_LATEST_DATE = get_gcp1_latest_date()
 
 # ───────────────────────────── egg column list ─────────────────────────────
 EGG_COLS = [
@@ -299,9 +404,229 @@ def query_bq(start_ts: float, window_s: int, bins: int, filter_broken_eggs: bool
 
     return df
 
+# ───────────────────────────── GCP2 data loading ────────────────────────────
+@lru_cache(maxsize=32)
+def get_gcp2_available_months(network: str) -> list[tuple[int, int, Path]]:
+    """Get list of (year, month, csv_path) tuples for available GCP2 data."""
+    network_path = GCP2_NETWORK_DIR / network
+    if not network_path.exists():
+        return []
+
+    months = []
+    for year_dir in sorted(network_path.iterdir()):
+        if not year_dir.is_dir():
+            continue
+        try:
+            year = int(year_dir.name)
+        except ValueError:
+            continue
+        for csv_file in sorted(year_dir.glob("*.csv")):
+            # Skip ZIP files
+            if csv_file.suffix == ".zip" or ".csv.zip" in csv_file.name:
+                continue
+            # Parse month from filename: GCP2_Network_Coherence_{network}_{year}_{month}.csv
+            parts = csv_file.stem.split("_")
+            try:
+                month = int(parts[-1])
+                months.append((year, month, csv_file))
+            except (ValueError, IndexError):
+                continue
+    return months
+
+
+def get_gcp2_monthly_files(network: str, start_ts: float, end_ts: float) -> list[Path]:
+    """Get list of monthly CSV files that cover the requested time range."""
+    start_dt = _dt.fromtimestamp(start_ts, _tz.utc)
+    end_dt = _dt.fromtimestamp(end_ts, _tz.utc)
+
+    files = []
+    for year, month, csv_path in get_gcp2_available_months(network):
+        file_start = _dt(year, month, 1, tzinfo=_tz.utc)
+        # Get first day of next month
+        if month == 12:
+            file_end = _dt(year + 1, 1, 1, tzinfo=_tz.utc)
+        else:
+            file_end = _dt(year, month + 1, 1, tzinfo=_tz.utc)
+
+        # Check overlap with requested range
+        if file_start < end_dt and file_end > start_dt:
+            files.append(csv_path)
+
+    return files
+
+
+def load_device_data(device_id: str, start_ts: float, end_ts: float) -> pd.DataFrame:
+    """Load individual device data from ZIP files.
+
+    Device data format: device_number, epoch_time_utc, active_seconds, device_coherence, significance
+    """
+    import zipfile
+
+    device_dir = GCP2_DEVICE_DIR / device_id
+    if not device_dir.exists():
+        print(f"Device directory not found: {device_dir}")
+        return pd.DataFrame()
+
+    frames = []
+
+    # Load History and Latest ZIP files
+    for zip_pattern in ["*_History.csv.zip", "*_Latest.csv.zip"]:
+        for zip_path in device_dir.glob(zip_pattern):
+            try:
+                with zipfile.ZipFile(zip_path, 'r') as zf:
+                    csv_name = zf.namelist()[0]
+                    with zf.open(csv_name) as f:
+                        df = pd.read_csv(f)
+                        if not df.empty:
+                            frames.append(df)
+            except Exception as e:
+                print(f"Error loading {zip_path}: {e}")
+                continue
+
+    if not frames:
+        return pd.DataFrame()
+
+    combined = pd.concat(frames, ignore_index=True)
+    combined = combined.drop_duplicates(subset=['epoch_time_utc'])
+    combined.sort_values("epoch_time_utc", inplace=True)
+
+    # Filter to time range
+    mask = (combined["epoch_time_utc"] >= start_ts) & (combined["epoch_time_utc"] < end_ts)
+    data = combined[mask].copy()
+
+    if data.empty:
+        return pd.DataFrame()
+
+    # Rename device_coherence to network_coherence for compatibility
+    # and add active_devices = 1 for single device
+    data = data.rename(columns={"device_coherence": "network_coherence"})
+    data["active_devices"] = 1
+
+    return data
+
+
+def query_gcp2(start_ts: float, window_s: int, bins: int, network: str = "global_network") -> pd.DataFrame:
+    """Query GCP2 network coherence data for the specified time window.
+
+    Returns DataFrame with columns:
+        - bin_idx: Bin index
+        - chi2_rolling_z_sum: Sum of (rolling_z)^2 - 1 in bin
+        - nc_sum: Sum of network_coherence in bin
+        - seconds_in_bin: Count of seconds in bin
+        - avg_active_devices: Average active devices
+        - cum_rolling_z: Cumulative sum of (rolling_z)^2 - 1
+        - cum_nc: Cumulative sum of network_coherence
+    """
+    cache_key = ("gcp2", start_ts, window_s, bins, network)
+    cached = CACHE.get(cache_key)
+    if cached is not None:
+        print(f"\n===== GCP2 Data (cached) =====")
+        print(f"Source: {network}, Rows: {len(cached)}")
+        print("==============================\n")
+        return cached
+
+    end_ts = start_ts + window_s
+
+    # Check if this is an individual device or a network/cluster
+    is_device = network.startswith("device_")
+
+    if is_device:
+        # Load individual device data from ZIP files
+        device_id = network.replace("device_", "")
+        data = load_device_data(device_id, start_ts, end_ts)
+        if data.empty:
+            print(f"\n===== GCP2 Device Data =====")
+            print(f"No data found for Device {device_id} in range {_dt.fromtimestamp(start_ts, _tz.utc)} to {_dt.fromtimestamp(end_ts, _tz.utc)}")
+            print("============================\n")
+            return pd.DataFrame()
+        source_info = f"Device {device_id}"
+    else:
+        # Get relevant monthly CSV files for network/cluster
+        csv_files = get_gcp2_monthly_files(network, start_ts, end_ts)
+        if not csv_files:
+            print(f"\n===== GCP2 Data =====")
+            print(f"No data files found for {network} in range {_dt.fromtimestamp(start_ts, _tz.utc)} to {_dt.fromtimestamp(end_ts, _tz.utc)}")
+            print("=====================\n")
+            return pd.DataFrame()
+
+        # Load and concatenate data
+        frames = []
+        for csv_path in csv_files:
+            try:
+                df = pd.read_csv(csv_path)
+                frames.append(df)
+            except Exception as e:
+                print(f"Error loading {csv_path}: {e}")
+                continue
+
+        if not frames:
+            return pd.DataFrame()
+
+        combined = pd.concat(frames, ignore_index=True)
+        combined.sort_values("epoch_time_utc", inplace=True)
+
+        # Filter to exact time window
+        mask = (combined["epoch_time_utc"] >= start_ts) & (combined["epoch_time_utc"] < end_ts)
+        data = combined[mask].copy()
+
+        if data.empty:
+            print(f"\n===== GCP2 Data =====")
+            print(f"No data in time range for {network}")
+            print("=====================\n")
+            return pd.DataFrame()
+
+        source_info = f"{network}, Files: {len(csv_files)}"
+
+    # Compute rolling Z-score of network_coherence
+    nc = data["network_coherence"]
+    roll = nc.rolling(ROLLING_WINDOW_SECONDS, min_periods=MIN_ROLLING_PERIODS)
+    data["rolling_z"] = (nc - roll.mean()) / (roll.std(ddof=0) + 1e-9)
+
+    # Compute chi-square style deviation: (rolling_z)^2 - 1
+    data["chi2_rolling_z"] = data["rolling_z"] ** 2 - 1
+
+    # Bin the data
+    seconds_per_bin = max(1, window_s // bins)
+    data["bin_idx"] = ((data["epoch_time_utc"] - start_ts) // seconds_per_bin).astype(int)
+
+    # Aggregate by bin
+    binned = data.groupby("bin_idx").agg(
+        nc_sum=("network_coherence", "sum"),
+        chi2_rolling_z_sum=("chi2_rolling_z", lambda x: x.dropna().sum()),
+        seconds_in_bin=("network_coherence", "count"),
+        avg_active_devices=("active_devices", "mean"),
+    ).reset_index()
+
+    # Compute cumulative sums
+    binned["cum_nc"] = binned["nc_sum"].cumsum()
+    binned["cum_rolling_z"] = binned["chi2_rolling_z_sum"].cumsum()
+
+    print(f"\n===== GCP2 Data =====")
+    print(f"Source: {source_info}, Rows: {len(binned)}")
+    print(binned.head(10).to_string(index=False))
+    print("=====================\n")
+
+    CACHE.set(cache_key, binned, expire=3600)
+    return binned
+
+
+def validate_gcp2_date_range(start_ts: float, window_s: int) -> tuple[bool, str]:
+    """Check if selected date range has GCP2 data available.
+
+    Returns:
+        (has_data, warning_message)
+    """
+    start_date = _dt.fromtimestamp(start_ts, _tz.utc).date()
+    end_date = _dt.fromtimestamp(start_ts + window_s, _tz.utc).date()
+
+    if start_date < GCP2_DATE_MIN:
+        return False, f"⚠ GCP2 data starts March 2024 (selected: {start_date})"
+
+    return True, ""
+
 # ───────────────────────────── Dash layout ─────────────────────────────────
 app = dash.Dash(__name__)
-app.title = "GCP EGG Statistical Analysis Explorer"
+app.title = "Global Consciousness Project RNG Statistical Analysis Explorer"
 
 # Add CSS for pulsing slider animations
 app.index_string = '''
@@ -424,7 +749,38 @@ app.index_string = '''
                 transform: scale(0.95);
                 box-shadow: 0 0 15px rgba(255, 190, 11, 0.6) !important;
             }
-                box-shadow: 0 0 20px rgba(157, 78, 221, 1) !important;
+
+            /* GCP2 Network Dropdown Styling */
+            #gcp2-network-select {
+                background-color: #1a1a2e !important;
+            }
+            #gcp2-network-select .Select-control {
+                background-color: #1a1a2e !important;
+                border: 1px solid #ffbe0b !important;
+            }
+            #gcp2-network-select .Select-value-label,
+            #gcp2-network-select .Select-placeholder {
+                color: #ffffff !important;
+            }
+            #gcp2-network-select .Select-menu-outer {
+                background-color: #1a1a2e !important;
+                border: 1px solid #ffbe0b !important;
+            }
+            #gcp2-network-select .VirtualizedSelectOption {
+                background-color: #1a1a2e !important;
+                color: #ffffff !important;
+            }
+            #gcp2-network-select .VirtualizedSelectFocusedOption {
+                background-color: #ffbe0b !important;
+                color: #0a0a0f !important;
+            }
+            /* React-Select v2+ styles used by Dash */
+            #gcp2-network-select .Select-single-value,
+            #gcp2-network-select input {
+                color: #ffffff !important;
+            }
+            #gcp2-network-select .Select-arrow {
+                border-color: #ffbe0b transparent transparent !important;
             }
         </style>
     </head>
@@ -482,7 +838,7 @@ app.layout = html.Div([
     html.Div([
         # Header with glowing effect
         html.Div([
-            html.H1("GCP EGG STATISTICAL ANALYSIS EXPLORER", 
+            html.H1("GLOBAL CONSCIOUSNESS PROJECT RNG STATISTICAL ANALYSIS EXPLORER", 
                    style={
                        "textAlign": "center",
                        "color": CYBERPUNK_COLORS['text_primary'],
@@ -609,6 +965,106 @@ app.layout = html.Div([
             "alignItems": "center"
         }),
 
+        # Data Source Selection - GCP1 and/or GCP2
+        html.Div([
+            html.H4("DATA SOURCE SELECTION", style={
+                "color": CYBERPUNK_COLORS['neon_yellow'],
+                "marginBottom": "15px",
+                "fontFamily": "'Orbitron', monospace",
+                "textShadow": f"0 0 5px {CYBERPUNK_COLORS['neon_yellow']}"
+            }),
+            html.Div([
+                # Data source checkboxes
+                dcc.Checklist(
+                    id="data-source-select",
+                    options=[
+                        {"label": f" GCP1 (BigQuery RNG Data 1998-{GCP1_LATEST_DATE})", "value": "gcp1"},
+                        {"label": f" GCP2 (Network Coherence Mar 2024-{GCP2_LATEST_DATE})", "value": "gcp2"},
+                    ],
+                    value=["gcp1"],  # Default to GCP1 only
+                    inline=True,
+                    style={
+                        "color": CYBERPUNK_COLORS['text_primary'],
+                        "fontFamily": "'Courier New', monospace",
+                        "fontSize": "14px"
+                    },
+                    inputStyle={"marginRight": "5px"},
+                    labelStyle={"marginRight": "20px"}
+                ),
+            ], style={"marginBottom": "15px"}),
+
+            # GCP2 Options (conditionally visible)
+            html.Div(id="gcp2-options-container", children=[
+                html.Div([
+                    html.Label("GCP2 Source:", style={
+                        "color": CYBERPUNK_COLORS['text_primary'],
+                        "fontFamily": "'Courier New', monospace",
+                        "fontSize": "13px",
+                        "marginRight": "10px"
+                    }),
+                    dcc.Dropdown(
+                        id="gcp2-network-select",
+                        options=(
+                            # Networks/Clusters section
+                            [{"label": "── Networks ──", "value": "_header_networks", "disabled": True}] +
+                            [{"label": name, "value": folder} for folder, name in GCP2_NETWORKS] +
+                            # Individual Devices section (all 473 devices)
+                            [{"label": "── Individual Devices ──", "value": "_header_devices", "disabled": True}] +
+                            [{"label": name, "value": folder} for folder, name in GCP2_DEVICES]
+                        ),
+                        value="global_network",
+                        clearable=False,
+                        searchable=True,  # Enable search for easy device lookup
+                        style={
+                            "width": "250px",
+                            "backgroundColor": CYBERPUNK_COLORS['bg_dark'],
+                            "color": CYBERPUNK_COLORS['text_primary'],
+                        }
+                    ),
+                ], style={"display": "flex", "alignItems": "center", "marginRight": "30px"}),
+
+                html.Div([
+                    html.Label("Display Mode:", style={
+                        "color": CYBERPUNK_COLORS['text_primary'],
+                        "fontFamily": "'Courier New', monospace",
+                        "fontSize": "13px",
+                        "marginRight": "10px"
+                    }),
+                    dcc.RadioItems(
+                        id="gcp2-display-mode",
+                        options=[
+                            {"label": " Rolling Z-normalized (comparable)", "value": "rolling_z"},
+                            {"label": " Raw cumsum(nc)", "value": "raw"},
+                        ],
+                        value="rolling_z",
+                        inline=True,
+                        style={
+                            "color": CYBERPUNK_COLORS['text_primary'],
+                            "fontFamily": "'Courier New', monospace",
+                            "fontSize": "13px"
+                        },
+                        inputStyle={"marginRight": "5px"},
+                        labelStyle={"marginRight": "15px"}
+                    ),
+                ], style={"display": "flex", "alignItems": "center"}),
+            ], style={"display": "none", "flexWrap": "wrap", "gap": "10px"}),
+
+            # Date range warning for GCP2
+            html.Div(id="gcp2-date-warning", style={
+                "color": CYBERPUNK_COLORS['neon_yellow'],
+                "fontFamily": "'Courier New', monospace",
+                "fontSize": "13px",
+                "marginTop": "10px"
+            }),
+        ], style={
+            "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
+            "padding": "20px",
+            "borderRadius": "15px",
+            "border": f"2px solid {CYBERPUNK_COLORS['neon_yellow']}",
+            "boxShadow": f"0 0 30px {CYBERPUNK_COLORS['neon_yellow']}40",
+            "marginBottom": "30px"
+        }),
+
         # Controls section with cyberpunk styling
         html.Div([
             # Date controls
@@ -689,7 +1145,9 @@ app.layout = html.Div([
                         (_dt(2022, 1, 1).date() - DATE_MIN).days: "2022",
                         (_dt(2023, 1, 1).date() - DATE_MIN).days: "2023",
                         (_dt(2024, 1, 1).date() - DATE_MIN).days: "2024",
-                        (_dt(2025, 1, 1).date() - DATE_MIN).days: "2025"
+                        (_dt(2025, 1, 1).date() - DATE_MIN).days: "2025",
+                        (_dt(2026, 1, 1).date() - DATE_MIN).days: "2026",
+                        (_dt(2027, 1, 1).date() - DATE_MIN).days: "2027"
                     },
                     updatemode="mouseup",
                     tooltip={"placement": "bottom"},
@@ -1087,16 +1545,22 @@ def create_egg_callback(app_instance):
         Output("start-time", "value"),
         Output("len", "value"),
         Output("bins", "value"),
+        Output("gcp2-options-container", "style"),
+        Output("gcp2-date-warning", "children"),
         Input("start-date", "value"), Input("start-time", "value"), Input("len", "value"), Input("bins", "value"),
         Input("date-input", "value"), Input("time-input", "value"), Input("window-length-input", "value"), Input("bin-count-input", "value"),
         Input("filter-broken-eggs", "value"),
         Input("pseudo-entropy", "value"),
         Input("show-parabolic-curve", "value"),
-        Input("clear-cache-btn", "n_clicks")
+        Input("clear-cache-btn", "n_clicks"),
+        Input("data-source-select", "value"),
+        Input("gcp2-network-select", "value"),
+        Input("gcp2-display-mode", "value")
     )
-    def update_graph(start_date_days, start_time_seconds, window_len, bins, 
-                    date_input, time_input, window_length_input, bin_count_input, filter_broken_eggs, pseudo_entropy, show_parabolic_curve, clear_cache_clicks):
-        
+    def update_graph(start_date_days, start_time_seconds, window_len, bins,
+                    date_input, time_input, window_length_input, bin_count_input, filter_broken_eggs, pseudo_entropy, show_parabolic_curve, clear_cache_clicks,
+                    data_sources, gcp2_network, gcp2_display_mode):
+
         start_time = time.time()
         
         # Determine which input triggered the callback and use that value
@@ -1134,7 +1598,7 @@ def create_egg_callback(app_instance):
             except (ValueError, TypeError) as e:
                 # Invalid input - use current slider value
                 selected_date = DATE_MIN + _td(days=start_date_days)
-        elif triggered_id in ["start-time", "time-input", "len", "bins", "window-length-input", "bin-count-input", "filter-broken-eggs", "clear-cache-btn"]:
+        elif triggered_id in ["start-time", "time-input", "len", "bins", "window-length-input", "bin-count-input", "filter-broken-eggs", "clear-cache-btn", "data-source-select", "gcp2-network-select", "gcp2-display-mode"]:
             # Use slider value when other inputs are triggered (but not when start-date slider is triggered)
             selected_date = DATE_MIN + _td(days=start_date_days)
         elif triggered_id == "start-date":
@@ -1177,7 +1641,7 @@ def create_egg_callback(app_instance):
             except (ValueError, TypeError) as e:
                 # Invalid input - use current slider value
                 selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
-        elif triggered_id in ["start-time", "date-input", "start-date", "len", "bins", "window-length-input", "bin-count-input", "filter-broken-eggs", "clear-cache-btn"]:
+        elif triggered_id in ["start-time", "date-input", "start-date", "len", "bins", "window-length-input", "bin-count-input", "filter-broken-eggs", "clear-cache-btn", "data-source-select", "gcp2-network-select", "gcp2-display-mode"]:
             # Use slider value when other inputs are triggered
             selected_time = _dt.strptime(f"{start_time_seconds//3600:02d}:{(start_time_seconds%3600)//60:02d}", "%H:%M").time()
         else:
@@ -1200,7 +1664,7 @@ def create_egg_callback(app_instance):
             except (ValueError, TypeError) as e:
                 # Invalid input - use current slider value
                 window_len = max(int(window_len), LEN_MIN_S)
-        elif triggered_id in ["start-time", "date-input", "start-date", "time-input", "bins", "bin-count-input", "filter-broken-eggs", "clear-cache-btn"]:
+        elif triggered_id in ["start-time", "date-input", "start-date", "time-input", "bins", "bin-count-input", "filter-broken-eggs", "clear-cache-btn", "data-source-select", "gcp2-network-select", "gcp2-display-mode"]:
             # Use slider value when other inputs are triggered
             window_len = max(int(window_len), LEN_MIN_S)
         else:
@@ -1223,7 +1687,7 @@ def create_egg_callback(app_instance):
             except (ValueError, TypeError) as e:
                 # Invalid input - use current slider value
                 bins = max(int(bins), BINS_MIN)
-        elif triggered_id in ["start-time", "date-input", "start-date", "time-input", "len", "window-length-input", "filter-broken-eggs", "clear-cache-btn"]:
+        elif triggered_id in ["start-time", "date-input", "start-date", "time-input", "len", "window-length-input", "filter-broken-eggs", "clear-cache-btn", "data-source-select", "gcp2-network-select", "gcp2-display-mode"]:
             # Use slider value when other inputs are triggered
             bins = max(int(bins), BINS_MIN)
         else:
@@ -1242,16 +1706,38 @@ def create_egg_callback(app_instance):
         # Handle parabolic curve option
         show_parabolic_curve_enabled = show_parabolic_curve and "enabled" in show_parabolic_curve
 
-        # Always fetch real data (never use pseudo entropy for main data)
-        real_cache_key = (start_ts, window_len, bins, filter_broken_eggs_enabled, False)
-        is_cached = CACHE.get(real_cache_key) is not None
-        
-        df = query_bq(start_ts, window_len, bins, filter_broken_eggs_enabled, False)
+        # Handle data source selection
+        data_sources = data_sources or ["gcp1"]
+        show_gcp1 = "gcp1" in data_sources
+        show_gcp2 = "gcp2" in data_sources
+
+        # GCP2 options visibility
+        gcp2_options_style = {"display": "flex", "flexWrap": "wrap", "gap": "10px"} if show_gcp2 else {"display": "none"}
+
+        # Validate GCP2 date range
+        gcp2_has_data, gcp2_warning = validate_gcp2_date_range(start_ts, window_len) if show_gcp2 else (False, "")
+
+        # Fetch GCP1 data if enabled
+        df = pd.DataFrame()
+        is_cached = False
+        if show_gcp1:
+            real_cache_key = (start_ts, window_len, bins, filter_broken_eggs_enabled, False)
+            is_cached = CACHE.get(real_cache_key) is not None
+            df = query_bq(start_ts, window_len, bins, filter_broken_eggs_enabled, False)
+
+        # Fetch GCP2 data if enabled
+        df_gcp2 = pd.DataFrame()
+        if show_gcp2 and gcp2_has_data:
+            df_gcp2 = query_gcp2(start_ts, window_len, bins, gcp2_network or "global_network")
         
         # Calculate timing (always do this)
         elapsed_time = time.time() - start_time
-        
-        if df.empty:
+
+        # Check if we have any data from either source
+        has_gcp1_data = show_gcp1 and not df.empty
+        has_gcp2_data = show_gcp2 and not df_gcp2.empty
+
+        if not has_gcp1_data and not has_gcp2_data:
             fig = go.Figure()
             
             # Format window length in human readable units for empty case
@@ -1275,7 +1761,7 @@ def create_egg_callback(app_instance):
             pseudo_status = " | PSEUDO ENTROPY: ON" if use_pseudo_entropy else ""
             parabolic_status = " | Parabolic curve: ON" if show_parabolic_curve_enabled else " | Parabolic curve: OFF"
             title_text = f"""
-            <b>GCP EGG Statistical Analysis</b><br>
+            <b>GCP RNG Statistical Analysis</b><br>
             <span style='font-size: 14px; color: {CYBERPUNK_COLORS['neon_pink']};'>
             Date: {selected_date.strftime('%Y-%m-%d')} | Time: {selected_time.strftime('%H:%M:%S')} UTC<br>
             Window: {window_len_str} ({window_len:,}s) | Bins: {bins}<br>
@@ -1314,48 +1800,59 @@ def create_egg_callback(app_instance):
             
             # Get data range info for status string
             first_date_str, last_date_str, total_count = get_data_range_info()
-            status_str = f"⚠ No data found in {elapsed_time:.2f}s | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
-            
+            sources_str = f"GCP1: {'ON' if show_gcp1 else 'OFF'} | GCP2: {'ON' if show_gcp2 else 'OFF'}"
+            status_str = f"⚠ No data found in {elapsed_time:.2f}s | {sources_str} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+
             return (fig, "No data", "", "", "", status_str,
                     selected_date.strftime("%Y-%m-%d"), selected_time.strftime("%H:%M"), window_len, bins,
-                    start_date_days, start_time_seconds, window_len, bins)
+                    start_date_days, start_time_seconds, window_len, bins,
+                    gcp2_options_style, gcp2_warning)
 
         # Calculate x-axis values and determine appropriate units
         seconds_per_bin = window_len / bins
-        
+
         # Choose appropriate time unit based on total window length for better readability
         if window_len < 3600:  # Less than 1 hour
             time_unit = "minutes"
             conversion_factor = 60
-            x = df["bin_idx"] * seconds_per_bin / 60
         elif window_len < 86400:  # Less than 1 day
             time_unit = "hours"
             conversion_factor = 3600
-            x = df["bin_idx"] * seconds_per_bin / 3600
         elif window_len < 604800:  # Less than 1 week
             time_unit = "days"
             conversion_factor = 86400
-            x = df["bin_idx"] * seconds_per_bin / 86400
         else:  # 1 week or more
             time_unit = "days"
             conversion_factor = 86400
-            x = df["bin_idx"] * seconds_per_bin / 86400
+
+        # Calculate x-axis for GCP1 data
+        x = df["bin_idx"] * seconds_per_bin / conversion_factor if has_gcp1_data else pd.Series([], dtype=float)
+
+        # Calculate x-axis for GCP2 data
+        x_gcp2 = df_gcp2["bin_idx"] * seconds_per_bin / conversion_factor if has_gcp2_data else pd.Series([], dtype=float)
         
-        # Create single-axis plot for cumulative deviation of χ² based on Stouffer Z
+        # Create single-axis plot for cumulative deviation of χ²
         fig = go.Figure()
-        
+
         # Calculate pointwise 95% (p=0.05) envelope under null using cumulative seconds
         # Under the null: Var(χ²(1) − 1) = 2 ⇒ Var[Σ X_t over T seconds] = 2T
         # Envelope: ± z_{0.975} √(2T), evaluated at cumulative seconds T_i
-        cumulative_seconds = df["seconds_in_bin"].cumsum() if not df.empty else pd.Series([], dtype=float)
+        # Use GCP1 data for envelope if available, otherwise GCP2
+        if has_gcp1_data:
+            cumulative_seconds = df["seconds_in_bin"].cumsum()
+        elif has_gcp2_data:
+            cumulative_seconds = df_gcp2["seconds_in_bin"].cumsum()
+        else:
+            cumulative_seconds = pd.Series([], dtype=float)
+
         envelope = compute_pointwise_p05_envelope(cumulative_seconds)
         # Plot x for envelope in the same display units as data
         x_curve = cumulative_seconds / conversion_factor if len(cumulative_seconds) else cumulative_seconds
         upper_curve = envelope
         lower_curve = -envelope
-        
+
         # Add parabolic probability curves only if checkbox is enabled
-        if show_parabolic_curve_enabled:
+        if show_parabolic_curve_enabled and len(x_curve) > 0:
             # Add upper significance curve (p=0.05)
             fig.add_trace(go.Scatter(
                 x=x_curve,
@@ -1368,7 +1865,7 @@ def create_egg_callback(app_instance):
                 ),
                 showlegend=True
             ))
-            
+
             # Add lower significance curve (p=0.05)
             fig.add_trace(go.Scatter(
                 x=x_curve,
@@ -1381,22 +1878,45 @@ def create_egg_callback(app_instance):
                 ),
                 showlegend=True
             ))
+
+        # Add GCP1 data trace if enabled and has data
+        if has_gcp1_data:
+            fig.add_trace(go.Scatter(
+                x=x,
+                y=df["cum_stouffer_z"],
+                mode="lines",
+                name="GCP1 χ² (Stouffer Z)",
+                line=dict(
+                    color=CYBERPUNK_COLORS['neon_purple'],
+                    width=3,
+                    shape='spline'
+                )
+            ))
+
+        # Add GCP2 data trace if enabled and has data
+        if has_gcp2_data:
+            gcp2_mode = gcp2_display_mode or "rolling_z"
+            if gcp2_mode == "rolling_z":
+                y_gcp2 = df_gcp2["cum_rolling_z"]
+                gcp2_trace_name = f"GCP2 χ² Rolling-Z ({gcp2_network})"
+            else:
+                y_gcp2 = df_gcp2["cum_nc"]
+                gcp2_trace_name = f"GCP2 Raw Cumsum ({gcp2_network})"
+
+            fig.add_trace(go.Scatter(
+                x=x_gcp2,
+                y=y_gcp2,
+                mode="lines",
+                name=gcp2_trace_name,
+                line=dict(
+                    color=CYBERPUNK_COLORS['neon_yellow'],
+                    width=2,
+                    shape='spline'
+                )
+            ))
         
-        # Always add the real data trace
-        fig.add_trace(go.Scatter(
-            x=x, 
-            y=df["cum_stouffer_z"], 
-            mode="lines",
-            name="Cumulative deviation of χ² based on Stouffer Z",
-            line=dict(
-                color=CYBERPUNK_COLORS['neon_purple'],
-                width=3,
-                shape='spline'
-            )
-        ))
-        
-        # If pseudo entropy is enabled, add a second trace with random data
-        if use_pseudo_entropy:
+        # If pseudo entropy is enabled (only applies to GCP1), add a trace with random data
+        if use_pseudo_entropy and show_gcp1:
             # Query for pseudo entropy data (same parameters but with random values)
             # Use a different cache key to avoid conflicts with real data
             pseudo_cache_key = (start_ts, window_len, bins, filter_broken_eggs_enabled, True)
@@ -1404,24 +1924,21 @@ def create_egg_callback(app_instance):
             if df_pseudo is None:
                 df_pseudo = query_bq(start_ts, window_len, bins, filter_broken_eggs_enabled, True)
                 CACHE.set(pseudo_cache_key, df_pseudo, expire=3600)
-            
+
             if not df_pseudo.empty:
                 # Calculate x-axis values for pseudo data (same as real data)
                 x_pseudo = df_pseudo["bin_idx"] * seconds_per_bin / conversion_factor
-                
-                # Debug: Print first few values to see if they're different
-                print(f"Real data first 5 cum_stouffer_z: {df['cum_stouffer_z'].head().tolist()}")
-                print(f"Pseudo data first 5 cum_stouffer_z: {df_pseudo['cum_stouffer_z'].head().tolist()}")
-                
+
                 fig.add_trace(go.Scatter(
-                    x=x_pseudo, 
-                    y=df_pseudo["cum_stouffer_z"], 
+                    x=x_pseudo,
+                    y=df_pseudo["cum_stouffer_z"],
                     mode="lines",
-                    name="Pseudo entropy (random)",
+                    name="GCP1 Pseudo Entropy (random)",
                     line=dict(
-                        color=CYBERPUNK_COLORS['neon_yellow'],
+                        color=CYBERPUNK_COLORS['neon_green'],  # Green to distinguish from GCP2 yellow
                         width=2,
-                        shape='spline'
+                        shape='spline',
+                        dash='dash'
                     )
                 ))
         
@@ -1453,19 +1970,28 @@ def create_egg_callback(app_instance):
         else:
             bin_duration_str = f"{bin_duration/86400:.1f}d"
         
-        # Get active eggs count
-        active_eggs = df['avg_active_eggs'].mean() if not df.empty else 0
-        
+        # Get active eggs/devices count
+        active_eggs = df['avg_active_eggs'].mean() if has_gcp1_data else 0
+        active_devices = df_gcp2['avg_active_devices'].mean() if has_gcp2_data else 0
+
+        # Build data source info for title
+        sources_info = []
+        if has_gcp1_data:
+            sources_info.append(f"GCP1: {active_eggs:.0f} eggs")
+        if has_gcp2_data:
+            sources_info.append(f"GCP2 ({gcp2_network}): {active_devices:.0f} devices")
+        sources_str = " | ".join(sources_info) if sources_info else "No data"
+
         # Create comprehensive title
-        pseudo_status = " | PSEUDO ENTROPY: ON (purple=real, yellow=random)" if use_pseudo_entropy else ""
-        parabolic_status = " | Parabolic curve: ON" if show_parabolic_curve_enabled else " | Parabolic curve: OFF"
+        pseudo_status = " | PSEUDO ENTROPY: ON" if use_pseudo_entropy else ""
+        parabolic_status = " | Parabolic: ON" if show_parabolic_curve_enabled else ""
+        gcp2_mode_str = f" | Mode: {gcp2_display_mode}" if has_gcp2_data else ""
         title_text = f"""
-        <b>GCP EGG Statistical Analysis</b><br>
+        <b>GCP RNG Statistical Analysis</b><br>
         <span style='font-size: 14px; color: {CYBERPUNK_COLORS['neon_cyan']};'>
         Date: {selected_date.strftime('%Y-%m-%d')} | Time: {selected_time.strftime('%H:%M:%S')} UTC<br>
         Window: {window_len_str} ({window_len:,}s) | Bins: {bins} (≈{bin_duration_str}/bin)<br>
-        Active Eggs: {active_eggs:.1f}/{len(EGG_COLS_FILTERED)} | 0-Filter: {'ON' if filter_broken_eggs_enabled else 'OFF'}{pseudo_status}{parabolic_status}<br>
-        Method: (Stouffer Z)² - 1 | Cumulative deviation of χ²
+        {sources_str}{gcp2_mode_str}{pseudo_status}{parabolic_status}
         </span>
         """
         
@@ -1533,25 +2059,30 @@ def create_egg_callback(app_instance):
         
         # Add filter status to bins string
         filter_status = " | 0-filter: ON" if filter_broken_eggs_enabled else " | 0-filter: OFF"
-        bins_str  = f"Bins: {bins} (≈ {bin_duration_str}/bin) | Active Eggs: {df['avg_active_eggs'].mean():.1f}/{len(EGG_COLS_FILTERED)}{filter_status} | Method: (Stouffer Z)² - 1"
-        
+        active_info = f"Eggs: {active_eggs:.0f}" if has_gcp1_data else ""
+        if has_gcp2_data:
+            active_info += f" | Devices: {active_devices:.0f}" if active_info else f"Devices: {active_devices:.0f}"
+        bins_str = f"Bins: {bins} (≈ {bin_duration_str}/bin) | {active_info}{filter_status}"
+
         # Status indicator with more details
         # Get data range info for status string
         first_date_str, last_date_str, total_count = get_data_range_info()
-        
-        pseudo_info = " | PSEUDO ENTROPY: ON" if use_pseudo_entropy else ""
-        parabolic_info = " | Parabolic curve: ON" if show_parabolic_curve_enabled else " | Parabolic curve: OFF"
+
+        sources_status = f"GCP1: {'ON' if show_gcp1 else 'OFF'} | GCP2: {'ON' if show_gcp2 else 'OFF'}"
+        pseudo_info = " | PSEUDO: ON" if use_pseudo_entropy else ""
+        parabolic_info = " | Parabolic: ON" if show_parabolic_curve_enabled else ""
         if triggered_id == "clear-cache-btn" and clear_cache_clicks and clear_cache_clicks > 0:
-            status_str = f"Cache cleared! BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins}{pseudo_info}{parabolic_info} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+            status_str = f"Cache cleared! Data fetched in {elapsed_time:.2f}s | {sources_status}{pseudo_info}{parabolic_info}"
         elif is_cached:
-            status_str = f"Cached data loaded in {elapsed_time:.2f}s{pseudo_info}{parabolic_info} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
+            status_str = f"Cached data loaded in {elapsed_time:.2f}s | {sources_status}{pseudo_info}{parabolic_info}"
         else:
-            status_str = f"BigQuery data fetched in {elapsed_time:.2f}s | Window: {window_len:,}s, Bins: {bins}{pseudo_info}{parabolic_info} | Total egg basket data from {first_date_str} to {last_date_str}, total rows {total_count:,}"
-        
+            status_str = f"Data fetched in {elapsed_time:.2f}s | {sources_status}{pseudo_info}{parabolic_info}"
+
         # Return all outputs including the input components for synchronization
         return (fig, start_date_str, start_time_str, len_str, bins_str, status_str,
                 selected_date.strftime("%Y-%m-%d"), selected_time.strftime("%H:%M"), window_len, bins,
-                start_date_days, start_time_seconds, window_len, bins)
+                start_date_days, start_time_seconds, window_len, bins,
+                gcp2_options_style, gcp2_warning)
 
 if __name__ == "__main__":
     # Register callbacks for standalone app
