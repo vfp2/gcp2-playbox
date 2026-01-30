@@ -269,10 +269,9 @@ def run_backtest(merged_df: pd.DataFrame, signal_col: str = "max_rolling_z",
 
 
 # ───────────────────────────── Dashboard App ──────────────────────────────
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
-app.title = "GCP Holmberg Analysis"
-
-app.layout = html.Div([
+def create_layout():
+    """Create the dashboard layout."""
+    return html.Div([
     # Header
     html.Div([
         html.H1("GCP HOLMBERG ANALYSIS DASHBOARD",
@@ -414,394 +413,426 @@ app.layout = html.Div([
 })
 
 
-@app.callback(
-    [Output("summary-stats", "children"),
-     Output("correlation-table", "children"),
-     Output("time-series-chart", "figure"),
-     Output("correlation-chart", "figure"),
-     Output("backtest-chart", "figure"),
-     Output("lag-chart", "figure")],
-    [Input("run-btn", "n_clicks")],
-    [State("months-select", "value"),
-     State("threshold-slider", "value"),
-     State("hold-days-select", "value"),
-     State("backtest-start-date", "date"),
-     State("custom-ticker-input", "value")],
-    prevent_initial_call=False
-)
-def update_analysis(n_clicks, months, threshold_pct, hold_days, backtest_start_date, custom_ticker):
-    """Run the full Holmberg analysis and update all visualizations."""
-
-    # Load GCP2 data
-    gcp_df = load_gcp2_network_data(months)
-    if gcp_df.empty:
-        empty_fig = go.Figure()
-        empty_fig.update_layout(
-            title="No GCP2 data available",
-            paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-            plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-            font=dict(color=CYBERPUNK_COLORS['text_primary'])
-        )
-        return (
-            html.P("No GCP2 data found. Ensure CSV files are in the network directory.",
-                   style={"color": CYBERPUNK_COLORS['neon_pink']}),
-            html.Div(),
-            empty_fig, empty_fig, empty_fig, empty_fig
-        )
-
-    # Compute daily metrics
-    gcp_daily = compute_daily_gcp_metrics(gcp_df)
-
-    # Fetch market data (including custom ticker if provided)
-    start_date = gcp_daily["date"].min().strftime("%Y-%m-%d")
-    end_date = (gcp_daily["date"].max() + timedelta(days=1)).strftime("%Y-%m-%d")
-    custom_ticker = custom_ticker or ""
-    market = fetch_market_data(start_date, end_date, custom_ticker)
-
-    if market.empty:
-        empty_fig = go.Figure()
-        empty_fig.update_layout(
-            title="No market data available",
-            paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-            plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-            font=dict(color=CYBERPUNK_COLORS['text_primary'])
-        )
-        return (
-            html.P("Failed to fetch market data from yfinance.",
-                   style={"color": CYBERPUNK_COLORS['neon_pink']}),
-            html.Div(),
-            empty_fig, empty_fig, empty_fig, empty_fig
-        )
-
-    # Merge datasets
-    merged = gcp_daily.merge(market, on="date", how="inner")
-
-    # Check for custom ticker in data
-    has_custom_ticker = "custom_close" in merged.columns and merged["custom_close"].notna().any()
-    custom_ticker_name = merged["custom_ticker"].iloc[0] if has_custom_ticker and "custom_ticker" in merged.columns else ""
-
-    if len(merged) < 10:
-        empty_fig = go.Figure()
-        return (
-            html.P(f"Insufficient data: only {len(merged)} trading days",
-                   style={"color": CYBERPUNK_COLORS['neon_pink']}),
-            html.Div(),
-            empty_fig, empty_fig, empty_fig, empty_fig
-        )
-
-    # Filter by backtest start date if provided
-    backtest_merged = merged.copy()
-    if backtest_start_date:
-        backtest_start = pd.to_datetime(backtest_start_date)
-        backtest_merged = merged[merged["date"] >= backtest_start].copy()
-        if len(backtest_merged) < 5:
-            backtest_merged = merged.copy()  # Fall back to all data if too few points
-
-    # Calculate correlations (on full merged data)
-    rz_vix_r, rz_vix_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["vix_close"].values)
-    rz_dvix_r, rz_dvix_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["vix_change"].values)
-    rz_spy_r, rz_spy_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["spy_return"].values)
-    pnc_vix_r, pnc_vix_p = pearson_with_pvalue(merged["peak_nc"].values, merged["vix_close"].values)
-    pnc_spy_r, pnc_spy_p = pearson_with_pvalue(merged["peak_nc"].values, merged["spy_return"].values)
-
-    # Calculate custom ticker correlations if available
-    rz_custom_r, rz_custom_p = (np.nan, np.nan)
-    if has_custom_ticker:
-        rz_custom_r, rz_custom_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["custom_return"].values)
-
-    # Run backtest (uses filtered data if start date provided)
-    backtest = run_backtest(backtest_merged, "max_rolling_z", threshold_pct, hold_days)
-
-    # Run lag analysis
-    lags = lag_analysis(merged["max_rolling_z"], merged["vix_change"])
-
-    # ── Summary Stats ──
-    final_excess = backtest["excess_return"].iloc[-1] if not backtest.empty else 0
-    backtest_start_str = backtest_merged["date"].min().strftime('%Y-%m-%d') if not backtest_merged.empty else "N/A"
-
-    # Build stats columns
-    stats_cols = [
-        dbc.Col([
-            html.Div([
-                html.H4(f"{len(merged)}", style={"color": CYBERPUNK_COLORS['neon_cyan'], "fontSize": "2rem", "marginBottom": "0"}),
-                html.P("Trading Days", style={"color": CYBERPUNK_COLORS['text_secondary']})
-            ], style={"textAlign": "center"})
-        ], width=2),
-        dbc.Col([
-            html.Div([
-                html.H4(f"{merged['median_devices'].median():.0f}", style={"color": CYBERPUNK_COLORS['neon_green'], "fontSize": "2rem", "marginBottom": "0"}),
-                html.P("Avg Devices", style={"color": CYBERPUNK_COLORS['text_secondary']})
-            ], style={"textAlign": "center"})
-        ], width=2),
-        dbc.Col([
-            html.Div([
-                html.H4(f"{rz_vix_r:.3f}", style={"color": CYBERPUNK_COLORS['neon_purple'], "fontSize": "2rem", "marginBottom": "0"}),
-                html.P(f"Z vs VIX (p={rz_vix_p:.3f})", style={"color": CYBERPUNK_COLORS['text_secondary']})
-            ], style={"textAlign": "center"})
-        ], width=2),
-        dbc.Col([
-            html.Div([
-                html.H4(f"{rz_spy_r:.3f}", style={"color": CYBERPUNK_COLORS['neon_yellow'], "fontSize": "2rem", "marginBottom": "0"}),
-                html.P(f"Z vs SPY (p={rz_spy_p:.3f})", style={"color": CYBERPUNK_COLORS['text_secondary']})
-            ], style={"textAlign": "center"})
-        ], width=2),
-    ]
-
-    # Add custom ticker correlation if available
-    if has_custom_ticker and not np.isnan(rz_custom_r):
-        stats_cols.append(dbc.Col([
-            html.Div([
-                html.H4(f"{rz_custom_r:.3f}", style={"color": CYBERPUNK_COLORS['neon_pink'], "fontSize": "2rem", "marginBottom": "0"}),
-                html.P(f"Z vs {custom_ticker_name} (p={rz_custom_p:.3f})", style={"color": CYBERPUNK_COLORS['text_secondary']})
-            ], style={"textAlign": "center"})
-        ], width=2))
-    else:
-        excess_color = CYBERPUNK_COLORS['neon_green'] if final_excess > 0 else CYBERPUNK_COLORS['neon_pink']
-        stats_cols.append(dbc.Col([
-            html.Div([
-                html.H4(f"{final_excess:+.1f}%", style={"color": excess_color, "fontSize": "2rem", "marginBottom": "0"}),
-                html.P(f"Backtest (from {backtest_start_str})", style={"color": CYBERPUNK_COLORS['text_secondary']})
-            ], style={"textAlign": "center"})
-        ], width=2))
-
-    stats_cols.append(dbc.Col([
-        html.Div([
-            html.H4(f"{merged['date'].min().strftime('%Y-%m-%d')}", style={"color": CYBERPUNK_COLORS['text_primary'], "fontSize": "1rem", "marginBottom": "0"}),
-            html.P(f"to {merged['date'].max().strftime('%Y-%m-%d')}", style={"color": CYBERPUNK_COLORS['text_secondary']})
-        ], style={"textAlign": "center"})
-    ], width=2))
-
-    summary_stats = html.Div([
-        dbc.Row(stats_cols)
-    ], style={
-        "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
-        "padding": "15px",
-        "borderRadius": "10px",
-        "border": f"1px solid {CYBERPUNK_COLORS['neon_cyan']}",
-    })
-
-    # ── Correlation Table ──
-    def sig_star(p):
-        if np.isnan(p): return ""
-        if p < 0.001: return "***"
-        if p < 0.01: return "**"
-        if p < 0.05: return "*"
-        return ""
-
-    # Build table headers
-    table_headers = [
-        html.Th("Metric", style={"color": CYBERPUNK_COLORS['neon_cyan']}),
-        html.Th("VIX Level", style={"color": CYBERPUNK_COLORS['text_primary']}),
-        html.Th("VIX Change", style={"color": CYBERPUNK_COLORS['text_primary']}),
-        html.Th("SPY Return", style={"color": CYBERPUNK_COLORS['text_primary']}),
-    ]
-    if has_custom_ticker:
-        table_headers.append(html.Th(f"{custom_ticker_name} Return", style={"color": CYBERPUNK_COLORS['neon_pink']}))
-
-    # Build table rows
-    row1_cells = [
-        html.Td("Max Rolling-Z", style={"color": CYBERPUNK_COLORS['neon_yellow']}),
-        html.Td(f"{rz_vix_r:.4f} {sig_star(rz_vix_p)}"),
-        html.Td(f"{rz_dvix_r:.4f} {sig_star(rz_dvix_p)}"),
-        html.Td(f"{rz_spy_r:.4f} {sig_star(rz_spy_p)}"),
-    ]
-    if has_custom_ticker:
-        row1_cells.append(html.Td(f"{rz_custom_r:.4f} {sig_star(rz_custom_p)}"))
-
-    pnc_custom_r, pnc_custom_p = (np.nan, np.nan)
-    if has_custom_ticker:
-        pnc_custom_r, pnc_custom_p = pearson_with_pvalue(merged['peak_nc'].values, merged['custom_return'].values)
-
-    row2_cells = [
-        html.Td("Peak NC", style={"color": CYBERPUNK_COLORS['neon_green']}),
-        html.Td(f"{pnc_vix_r:.4f} {sig_star(pnc_vix_p)}"),
-        html.Td(f"{pearson_with_pvalue(merged['peak_nc'].values, merged['vix_change'].values)[0]:.4f}"),
-        html.Td(f"{pnc_spy_r:.4f} {sig_star(pnc_spy_p)}"),
-    ]
-    if has_custom_ticker:
-        row2_cells.append(html.Td(f"{pnc_custom_r:.4f} {sig_star(pnc_custom_p)}"))
-
-    correlation_table = html.Div([
-        html.H4("Correlation Analysis", style={"color": CYBERPUNK_COLORS['neon_purple'], "marginBottom": "10px"}),
-        dbc.Table([
-            html.Thead(html.Tr(table_headers)),
-            html.Tbody([
-                html.Tr(row1_cells),
-                html.Tr(row2_cells),
-            ])
-        ], bordered=True, dark=True, hover=True, size="sm")
-    ], style={
-        "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
-        "padding": "15px",
-        "borderRadius": "10px",
-        "border": f"1px solid {CYBERPUNK_COLORS['neon_purple']}",
-    })
-
-    # ── Time Series Chart ──
-    # Compute rolling correlations (30-day window)
-    rolling_window = 30
-    merged_sorted = merged.sort_values("date").copy()
-    merged_sorted["rolling_corr_vix"] = merged_sorted["max_rolling_z"].rolling(rolling_window).corr(merged_sorted["vix_change"])
-    merged_sorted["rolling_corr_spy"] = merged_sorted["max_rolling_z"].rolling(rolling_window).corr(merged_sorted["spy_return"])
-    if has_custom_ticker:
-        merged_sorted["rolling_corr_custom"] = merged_sorted["max_rolling_z"].rolling(rolling_window).corr(merged_sorted["custom_return"])
-
-    n_rows = 5 if has_custom_ticker else 4
-    subplot_titles = ["Max Rolling-Z (GCP2)", "VIX Level", "SPY Price", "Rolling Correlation (30-day)"]
-    if has_custom_ticker:
-        subplot_titles.insert(3, f"{custom_ticker_name} Price")
-
-    ts_fig = make_subplots(rows=n_rows, cols=1, shared_xaxes=True,
-                           subplot_titles=subplot_titles,
-                           vertical_spacing=0.05)
-
-    ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["max_rolling_z"],
-                                mode="lines", name="Max Rolling-Z",
-                                line=dict(color=CYBERPUNK_COLORS['neon_purple'])), row=1, col=1)
-    ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["vix_close"],
-                                mode="lines", name="VIX",
-                                line=dict(color=CYBERPUNK_COLORS['neon_pink'])), row=2, col=1)
-    ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["spy_close"],
-                                mode="lines", name="SPY",
-                                line=dict(color=CYBERPUNK_COLORS['neon_green'])), row=3, col=1)
-
-    if has_custom_ticker:
-        ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["custom_close"],
-                                    mode="lines", name=custom_ticker_name,
-                                    line=dict(color=CYBERPUNK_COLORS['neon_yellow'])), row=4, col=1)
-        corr_row = 5
-    else:
-        corr_row = 4
-
-    # Add rolling correlation traces
-    ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["rolling_corr_vix"],
-                                mode="lines", name="r(Z, VIX Δ)",
-                                line=dict(color=CYBERPUNK_COLORS['neon_pink'], width=1.5)), row=corr_row, col=1)
-    ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["rolling_corr_spy"],
-                                mode="lines", name="r(Z, SPY %)",
-                                line=dict(color=CYBERPUNK_COLORS['neon_green'], width=1.5)), row=corr_row, col=1)
-    if has_custom_ticker:
-        ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["rolling_corr_custom"],
-                                    mode="lines", name=f"r(Z, {custom_ticker_name} %)",
-                                    line=dict(color=CYBERPUNK_COLORS['neon_yellow'], width=1.5)), row=corr_row, col=1)
-    # Add zero line for correlation reference
-    ts_fig.add_hline(y=0, line_dash="dash", line_color=CYBERPUNK_COLORS['text_secondary'],
-                     line_width=1, row=corr_row, col=1)
-
-    chart_height = 900 if has_custom_ticker else 750
-    ts_fig.update_layout(
-        title="Time Series: GCP2 Max[Z] vs Market Indicators",
-        height=chart_height,
-        paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-        plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-        font=dict(color=CYBERPUNK_COLORS['text_primary']),
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02)
+def register_callbacks(app):
+    """Register all callbacks for the dashboard."""
+    @app.callback(
+        [Output("summary-stats", "children"),
+         Output("correlation-table", "children"),
+         Output("time-series-chart", "figure"),
+         Output("correlation-chart", "figure"),
+         Output("backtest-chart", "figure"),
+         Output("lag-chart", "figure")],
+        [Input("run-btn", "n_clicks")],
+        [State("months-select", "value"),
+         State("threshold-slider", "value"),
+         State("hold-days-select", "value"),
+         State("backtest-start-date", "date"),
+         State("custom-ticker-input", "value")],
+        prevent_initial_call=False
     )
-    ts_fig.update_xaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
-    ts_fig.update_yaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
-    # Set y-axis range for correlation panel
-    ts_fig.update_yaxes(range=[-1, 1], row=corr_row, col=1)
+    def update_analysis(n_clicks, months, threshold_pct, hold_days, backtest_start_date, custom_ticker):
+            """Run the full Holmberg analysis and update all visualizations."""
 
-    # ── Correlation Scatter Chart ──
-    n_scatter_cols = 3 if has_custom_ticker else 2
-    scatter_titles = ["Max[Z] vs VIX Change", "Max[Z] vs SPY Return"]
-    if has_custom_ticker:
-        scatter_titles.append(f"Max[Z] vs {custom_ticker_name} Return")
+            # Load GCP2 data
+            gcp_df = load_gcp2_network_data(months)
+            if gcp_df.empty:
+                empty_fig = go.Figure()
+                empty_fig.update_layout(
+                    title="No GCP2 data available",
+                    paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                    plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                    font=dict(color=CYBERPUNK_COLORS['text_primary'])
+                )
+                return (
+                    html.P("No GCP2 data found. Ensure CSV files are in the network directory.",
+                           style={"color": CYBERPUNK_COLORS['neon_pink']}),
+                    html.Div(),
+                    empty_fig, empty_fig, empty_fig, empty_fig
+                )
 
-    corr_fig = make_subplots(rows=1, cols=n_scatter_cols, subplot_titles=scatter_titles)
+            # Compute daily metrics
+            gcp_daily = compute_daily_gcp_metrics(gcp_df)
 
-    corr_fig.add_trace(go.Scatter(
-        x=merged["max_rolling_z"], y=merged["vix_change"],
-        mode="markers", name="vs VIX",
-        marker=dict(color=CYBERPUNK_COLORS['neon_pink'], size=5, opacity=0.6)
-    ), row=1, col=1)
+            # Fetch market data (including custom ticker if provided)
+            start_date = gcp_daily["date"].min().strftime("%Y-%m-%d")
+            end_date = (gcp_daily["date"].max() + timedelta(days=1)).strftime("%Y-%m-%d")
+            custom_ticker = custom_ticker or ""
+            market = fetch_market_data(start_date, end_date, custom_ticker)
 
-    corr_fig.add_trace(go.Scatter(
-        x=merged["max_rolling_z"], y=merged["spy_return"] * 100,
-        mode="markers", name="vs SPY%",
-        marker=dict(color=CYBERPUNK_COLORS['neon_green'], size=5, opacity=0.6)
-    ), row=1, col=2)
+            if market.empty:
+                empty_fig = go.Figure()
+                empty_fig.update_layout(
+                    title="No market data available",
+                    paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                    plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                    font=dict(color=CYBERPUNK_COLORS['text_primary'])
+                )
+                return (
+                    html.P("Failed to fetch market data from yfinance.",
+                           style={"color": CYBERPUNK_COLORS['neon_pink']}),
+                    html.Div(),
+                    empty_fig, empty_fig, empty_fig, empty_fig
+                )
 
-    if has_custom_ticker:
-        corr_fig.add_trace(go.Scatter(
-            x=merged["max_rolling_z"], y=merged["custom_return"] * 100,
-            mode="markers", name=f"vs {custom_ticker_name}%",
-            marker=dict(color=CYBERPUNK_COLORS['neon_yellow'], size=5, opacity=0.6)
-        ), row=1, col=3)
+            # Merge datasets
+            merged = gcp_daily.merge(market, on="date", how="inner")
 
-    title_str = f"Scatter: Max[Z] Correlations (r_VIX={rz_dvix_r:.3f}, r_SPY={rz_spy_r:.3f}"
-    if has_custom_ticker and not np.isnan(rz_custom_r):
-        title_str += f", r_{custom_ticker_name}={rz_custom_r:.3f}"
-    title_str += ")"
+            # Check for custom ticker in data
+            has_custom_ticker = "custom_close" in merged.columns and merged["custom_close"].notna().any()
+            custom_ticker_name = merged["custom_ticker"].iloc[0] if has_custom_ticker and "custom_ticker" in merged.columns else ""
 
-    corr_fig.update_layout(
-        title=title_str,
-        height=400,
-        paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-        plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-        font=dict(color=CYBERPUNK_COLORS['text_primary']),
+            if len(merged) < 10:
+                empty_fig = go.Figure()
+                return (
+                    html.P(f"Insufficient data: only {len(merged)} trading days",
+                           style={"color": CYBERPUNK_COLORS['neon_pink']}),
+                    html.Div(),
+                    empty_fig, empty_fig, empty_fig, empty_fig
+                )
+
+            # Filter by backtest start date if provided
+            backtest_merged = merged.copy()
+            if backtest_start_date:
+                backtest_start = pd.to_datetime(backtest_start_date)
+                backtest_merged = merged[merged["date"] >= backtest_start].copy()
+                if len(backtest_merged) < 5:
+                    backtest_merged = merged.copy()  # Fall back to all data if too few points
+
+            # Calculate correlations (on full merged data)
+            rz_vix_r, rz_vix_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["vix_close"].values)
+            rz_dvix_r, rz_dvix_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["vix_change"].values)
+            rz_spy_r, rz_spy_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["spy_return"].values)
+            pnc_vix_r, pnc_vix_p = pearson_with_pvalue(merged["peak_nc"].values, merged["vix_close"].values)
+            pnc_spy_r, pnc_spy_p = pearson_with_pvalue(merged["peak_nc"].values, merged["spy_return"].values)
+
+            # Calculate custom ticker correlations if available
+            rz_custom_r, rz_custom_p = (np.nan, np.nan)
+            if has_custom_ticker:
+                rz_custom_r, rz_custom_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["custom_return"].values)
+
+            # Run backtest (uses filtered data if start date provided)
+            backtest = run_backtest(backtest_merged, "max_rolling_z", threshold_pct, hold_days)
+
+            # Run lag analysis
+            lags = lag_analysis(merged["max_rolling_z"], merged["vix_change"])
+
+            # ── Summary Stats ──
+            final_excess = backtest["excess_return"].iloc[-1] if not backtest.empty else 0
+            backtest_start_str = backtest_merged["date"].min().strftime('%Y-%m-%d') if not backtest_merged.empty else "N/A"
+
+            # Build stats columns
+            stats_cols = [
+                dbc.Col([
+                    html.Div([
+                        html.H4(f"{len(merged)}", style={"color": CYBERPUNK_COLORS['neon_cyan'], "fontSize": "2rem", "marginBottom": "0"}),
+                        html.P("Trading Days", style={"color": CYBERPUNK_COLORS['text_secondary']})
+                    ], style={"textAlign": "center"})
+                ], width=2),
+                dbc.Col([
+                    html.Div([
+                        html.H4(f"{merged['median_devices'].median():.0f}", style={"color": CYBERPUNK_COLORS['neon_green'], "fontSize": "2rem", "marginBottom": "0"}),
+                        html.P("Avg Devices", style={"color": CYBERPUNK_COLORS['text_secondary']})
+                    ], style={"textAlign": "center"})
+                ], width=2),
+                dbc.Col([
+                    html.Div([
+                        html.H4(f"{rz_vix_r:.3f}", style={"color": CYBERPUNK_COLORS['neon_purple'], "fontSize": "2rem", "marginBottom": "0"}),
+                        html.P(f"Z vs VIX (p={rz_vix_p:.3f})", style={"color": CYBERPUNK_COLORS['text_secondary']})
+                    ], style={"textAlign": "center"})
+                ], width=2),
+                dbc.Col([
+                    html.Div([
+                        html.H4(f"{rz_spy_r:.3f}", style={"color": CYBERPUNK_COLORS['neon_yellow'], "fontSize": "2rem", "marginBottom": "0"}),
+                        html.P(f"Z vs SPY (p={rz_spy_p:.3f})", style={"color": CYBERPUNK_COLORS['text_secondary']})
+                    ], style={"textAlign": "center"})
+                ], width=2),
+            ]
+
+            # Add custom ticker correlation if available
+            if has_custom_ticker and not np.isnan(rz_custom_r):
+                stats_cols.append(dbc.Col([
+                    html.Div([
+                        html.H4(f"{rz_custom_r:.3f}", style={"color": CYBERPUNK_COLORS['neon_pink'], "fontSize": "2rem", "marginBottom": "0"}),
+                        html.P(f"Z vs {custom_ticker_name} (p={rz_custom_p:.3f})", style={"color": CYBERPUNK_COLORS['text_secondary']})
+                    ], style={"textAlign": "center"})
+                ], width=2))
+            else:
+                excess_color = CYBERPUNK_COLORS['neon_green'] if final_excess > 0 else CYBERPUNK_COLORS['neon_pink']
+                stats_cols.append(dbc.Col([
+                    html.Div([
+                        html.H4(f"{final_excess:+.1f}%", style={"color": excess_color, "fontSize": "2rem", "marginBottom": "0"}),
+                        html.P(f"Backtest (from {backtest_start_str})", style={"color": CYBERPUNK_COLORS['text_secondary']})
+                    ], style={"textAlign": "center"})
+                ], width=2))
+
+            stats_cols.append(dbc.Col([
+                html.Div([
+                    html.H4(f"{merged['date'].min().strftime('%Y-%m-%d')}", style={"color": CYBERPUNK_COLORS['text_primary'], "fontSize": "1rem", "marginBottom": "0"}),
+                    html.P(f"to {merged['date'].max().strftime('%Y-%m-%d')}", style={"color": CYBERPUNK_COLORS['text_secondary']})
+                ], style={"textAlign": "center"})
+            ], width=2))
+
+            summary_stats = html.Div([
+                dbc.Row(stats_cols)
+            ], style={
+                "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
+                "padding": "15px",
+                "borderRadius": "10px",
+                "border": f"1px solid {CYBERPUNK_COLORS['neon_cyan']}",
+            })
+
+            # ── Correlation Table ──
+            def sig_star(p):
+                if np.isnan(p): return ""
+                if p < 0.001: return "***"
+                if p < 0.01: return "**"
+                if p < 0.05: return "*"
+                return ""
+
+            # Build table headers
+            table_headers = [
+                html.Th("Metric", style={"color": CYBERPUNK_COLORS['neon_cyan']}),
+                html.Th("VIX Level", style={"color": CYBERPUNK_COLORS['text_primary']}),
+                html.Th("VIX Change", style={"color": CYBERPUNK_COLORS['text_primary']}),
+                html.Th("SPY Return", style={"color": CYBERPUNK_COLORS['text_primary']}),
+            ]
+            if has_custom_ticker:
+                table_headers.append(html.Th(f"{custom_ticker_name} Return", style={"color": CYBERPUNK_COLORS['neon_pink']}))
+
+            # Build table rows
+            row1_cells = [
+                html.Td("Max Rolling-Z", style={"color": CYBERPUNK_COLORS['neon_yellow']}),
+                html.Td(f"{rz_vix_r:.4f} {sig_star(rz_vix_p)}"),
+                html.Td(f"{rz_dvix_r:.4f} {sig_star(rz_dvix_p)}"),
+                html.Td(f"{rz_spy_r:.4f} {sig_star(rz_spy_p)}"),
+            ]
+            if has_custom_ticker:
+                row1_cells.append(html.Td(f"{rz_custom_r:.4f} {sig_star(rz_custom_p)}"))
+
+            pnc_custom_r, pnc_custom_p = (np.nan, np.nan)
+            if has_custom_ticker:
+                pnc_custom_r, pnc_custom_p = pearson_with_pvalue(merged['peak_nc'].values, merged['custom_return'].values)
+
+            row2_cells = [
+                html.Td("Peak NC", style={"color": CYBERPUNK_COLORS['neon_green']}),
+                html.Td(f"{pnc_vix_r:.4f} {sig_star(pnc_vix_p)}"),
+                html.Td(f"{pearson_with_pvalue(merged['peak_nc'].values, merged['vix_change'].values)[0]:.4f}"),
+                html.Td(f"{pnc_spy_r:.4f} {sig_star(pnc_spy_p)}"),
+            ]
+            if has_custom_ticker:
+                row2_cells.append(html.Td(f"{pnc_custom_r:.4f} {sig_star(pnc_custom_p)}"))
+
+            correlation_table = html.Div([
+                html.H4("Correlation Analysis", style={"color": CYBERPUNK_COLORS['neon_purple'], "marginBottom": "10px"}),
+                dbc.Table([
+                    html.Thead(html.Tr(table_headers)),
+                    html.Tbody([
+                        html.Tr(row1_cells),
+                        html.Tr(row2_cells),
+                    ])
+                ], bordered=True, dark=True, hover=True, size="sm")
+            ], style={
+                "background": f"linear-gradient(135deg, {CYBERPUNK_COLORS['bg_medium']} 0%, {CYBERPUNK_COLORS['bg_light']} 100%)",
+                "padding": "15px",
+                "borderRadius": "10px",
+                "border": f"1px solid {CYBERPUNK_COLORS['neon_purple']}",
+            })
+
+            # ── Time Series Chart ──
+            # Compute rolling correlations (30-day window)
+            rolling_window = 30
+            merged_sorted = merged.sort_values("date").copy()
+            merged_sorted["rolling_corr_vix"] = merged_sorted["max_rolling_z"].rolling(rolling_window).corr(merged_sorted["vix_change"])
+            merged_sorted["rolling_corr_spy"] = merged_sorted["max_rolling_z"].rolling(rolling_window).corr(merged_sorted["spy_return"])
+            if has_custom_ticker:
+                merged_sorted["rolling_corr_custom"] = merged_sorted["max_rolling_z"].rolling(rolling_window).corr(merged_sorted["custom_return"])
+
+            n_rows = 5 if has_custom_ticker else 4
+            subplot_titles = ["Max Rolling-Z (GCP2)", "VIX Level", "SPY Price", "Rolling Correlation (30-day)"]
+            if has_custom_ticker:
+                subplot_titles.insert(3, f"{custom_ticker_name} Price")
+
+            ts_fig = make_subplots(rows=n_rows, cols=1, shared_xaxes=True,
+                                   subplot_titles=subplot_titles,
+                                   vertical_spacing=0.05)
+
+            ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["max_rolling_z"],
+                                        mode="lines", name="Max Rolling-Z",
+                                        line=dict(color=CYBERPUNK_COLORS['neon_purple'])), row=1, col=1)
+            ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["vix_close"],
+                                        mode="lines", name="VIX",
+                                        line=dict(color=CYBERPUNK_COLORS['neon_pink'])), row=2, col=1)
+            ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["spy_close"],
+                                        mode="lines", name="SPY",
+                                        line=dict(color=CYBERPUNK_COLORS['neon_green'])), row=3, col=1)
+
+            if has_custom_ticker:
+                ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["custom_close"],
+                                            mode="lines", name=custom_ticker_name,
+                                            line=dict(color=CYBERPUNK_COLORS['neon_yellow'])), row=4, col=1)
+                corr_row = 5
+            else:
+                corr_row = 4
+
+            # Add rolling correlation traces
+            ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["rolling_corr_vix"],
+                                        mode="lines", name="r(Z, VIX Δ)",
+                                        line=dict(color=CYBERPUNK_COLORS['neon_pink'], width=1.5)), row=corr_row, col=1)
+            ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["rolling_corr_spy"],
+                                        mode="lines", name="r(Z, SPY %)",
+                                        line=dict(color=CYBERPUNK_COLORS['neon_green'], width=1.5)), row=corr_row, col=1)
+            if has_custom_ticker:
+                ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["rolling_corr_custom"],
+                                            mode="lines", name=f"r(Z, {custom_ticker_name} %)",
+                                            line=dict(color=CYBERPUNK_COLORS['neon_yellow'], width=1.5)), row=corr_row, col=1)
+            # Add zero line for correlation reference
+            ts_fig.add_hline(y=0, line_dash="dash", line_color=CYBERPUNK_COLORS['text_secondary'],
+                             line_width=1, row=corr_row, col=1)
+
+            chart_height = 900 if has_custom_ticker else 750
+            ts_fig.update_layout(
+                title="Time Series: GCP2 Max[Z] vs Market Indicators",
+                height=chart_height,
+                paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                font=dict(color=CYBERPUNK_COLORS['text_primary']),
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02)
+            )
+            ts_fig.update_xaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
+            ts_fig.update_yaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
+            # Set y-axis range for correlation panel
+            ts_fig.update_yaxes(range=[-1, 1], row=corr_row, col=1)
+
+            # ── Correlation Scatter Chart ──
+            n_scatter_cols = 3 if has_custom_ticker else 2
+            scatter_titles = ["Max[Z] vs VIX Change", "Max[Z] vs SPY Return"]
+            if has_custom_ticker:
+                scatter_titles.append(f"Max[Z] vs {custom_ticker_name} Return")
+
+            corr_fig = make_subplots(rows=1, cols=n_scatter_cols, subplot_titles=scatter_titles)
+
+            corr_fig.add_trace(go.Scatter(
+                x=merged["max_rolling_z"], y=merged["vix_change"],
+                mode="markers", name="vs VIX",
+                marker=dict(color=CYBERPUNK_COLORS['neon_pink'], size=5, opacity=0.6)
+            ), row=1, col=1)
+
+            corr_fig.add_trace(go.Scatter(
+                x=merged["max_rolling_z"], y=merged["spy_return"] * 100,
+                mode="markers", name="vs SPY%",
+                marker=dict(color=CYBERPUNK_COLORS['neon_green'], size=5, opacity=0.6)
+            ), row=1, col=2)
+
+            if has_custom_ticker:
+                corr_fig.add_trace(go.Scatter(
+                    x=merged["max_rolling_z"], y=merged["custom_return"] * 100,
+                    mode="markers", name=f"vs {custom_ticker_name}%",
+                    marker=dict(color=CYBERPUNK_COLORS['neon_yellow'], size=5, opacity=0.6)
+                ), row=1, col=3)
+
+            title_str = f"Scatter: Max[Z] Correlations (r_VIX={rz_dvix_r:.3f}, r_SPY={rz_spy_r:.3f}"
+            if has_custom_ticker and not np.isnan(rz_custom_r):
+                title_str += f", r_{custom_ticker_name}={rz_custom_r:.3f}"
+            title_str += ")"
+
+            corr_fig.update_layout(
+                title=title_str,
+                height=400,
+                paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                font=dict(color=CYBERPUNK_COLORS['text_primary']),
+            )
+            corr_fig.update_xaxes(title_text="Max Rolling-Z", gridcolor=CYBERPUNK_COLORS['bg_light'])
+            corr_fig.update_yaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
+
+            # ── Backtest Chart ──
+            bt_fig = go.Figure()
+            if not backtest.empty:
+                bt_fig.add_trace(go.Scatter(
+                    x=backtest["date"], y=backtest["portfolio_value"],
+                    mode="lines", name=f"Max[Z] Strategy (P{threshold_pct})",
+                    line=dict(color=CYBERPUNK_COLORS['neon_cyan'], width=2)
+                ))
+                bt_fig.add_trace(go.Scatter(
+                    x=backtest["date"], y=backtest["buy_hold_value"],
+                    mode="lines", name="Buy & Hold SPY",
+                    line=dict(color=CYBERPUNK_COLORS['text_secondary'], width=2, dash="dash")
+                ))
+
+            backtest_title = f"Backtest: Max[Z] > P{threshold_pct} Strategy vs Buy & Hold"
+            if backtest_start_date:
+                backtest_title += f" (from {backtest_start_str})"
+            backtest_title += f" | Excess: {final_excess:+.1f}%"
+
+            bt_fig.update_layout(
+                title=backtest_title,
+                height=400,
+                paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                font=dict(color=CYBERPUNK_COLORS['text_primary']),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                yaxis_title="Portfolio Value ($100 start)"
+            )
+            bt_fig.update_xaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
+            bt_fig.update_yaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
+
+            # ── Lag Analysis Chart ──
+            lag_fig = go.Figure()
+            lag_fig.add_trace(go.Bar(
+                x=lags["lag"], y=lags["r"],
+                marker_color=[CYBERPUNK_COLORS['neon_green'] if p < 0.05 else CYBERPUNK_COLORS['text_secondary']
+                              for p in lags["p_value"]],
+                name="Correlation"
+            ))
+            lag_fig.add_hline(y=0, line_dash="dash", line_color=CYBERPUNK_COLORS['neon_pink'])
+
+            lag_fig.update_layout(
+                title="Lag Analysis: Max[Z] → VIX Change (positive lag = GCP leads market)",
+                height=350,
+                paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
+                font=dict(color=CYBERPUNK_COLORS['text_primary']),
+                xaxis_title="Lag (days)",
+                yaxis_title="Correlation (r)"
+            )
+            lag_fig.update_xaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
+            lag_fig.update_yaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
+
+            return summary_stats, correlation_table, ts_fig, corr_fig, bt_fig, lag_fig
+
+
+def mount_holmberg_dashboard(server, base_path="/experiment-6/"):
+    """Mount the Holmberg dashboard on an existing Flask server.
+
+    Args:
+        server: Flask server instance
+        base_path: URL path prefix for the dashboard
+
+    Returns:
+        The mounted Dash app
+    """
+    app = dash.Dash(
+        __name__,
+        server=server,
+        url_base_pathname=base_path,
+        external_stylesheets=[dbc.themes.CYBORG]
     )
-    corr_fig.update_xaxes(title_text="Max Rolling-Z", gridcolor=CYBERPUNK_COLORS['bg_light'])
-    corr_fig.update_yaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
+    app.title = "GCP Holmberg Analysis"
+    app.layout = create_layout()
+    register_callbacks(app)
+    return app
 
-    # ── Backtest Chart ──
-    bt_fig = go.Figure()
-    if not backtest.empty:
-        bt_fig.add_trace(go.Scatter(
-            x=backtest["date"], y=backtest["portfolio_value"],
-            mode="lines", name=f"Max[Z] Strategy (P{threshold_pct})",
-            line=dict(color=CYBERPUNK_COLORS['neon_cyan'], width=2)
-        ))
-        bt_fig.add_trace(go.Scatter(
-            x=backtest["date"], y=backtest["buy_hold_value"],
-            mode="lines", name="Buy & Hold SPY",
-            line=dict(color=CYBERPUNK_COLORS['text_secondary'], width=2, dash="dash")
-        ))
 
-    backtest_title = f"Backtest: Max[Z] > P{threshold_pct} Strategy vs Buy & Hold"
-    if backtest_start_date:
-        backtest_title += f" (from {backtest_start_str})"
-    backtest_title += f" | Excess: {final_excess:+.1f}%"
-
-    bt_fig.update_layout(
-        title=backtest_title,
-        height=400,
-        paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-        plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-        font=dict(color=CYBERPUNK_COLORS['text_primary']),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
-        yaxis_title="Portfolio Value ($100 start)"
-    )
-    bt_fig.update_xaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
-    bt_fig.update_yaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
-
-    # ── Lag Analysis Chart ──
-    lag_fig = go.Figure()
-    lag_fig.add_trace(go.Bar(
-        x=lags["lag"], y=lags["r"],
-        marker_color=[CYBERPUNK_COLORS['neon_green'] if p < 0.05 else CYBERPUNK_COLORS['text_secondary']
-                      for p in lags["p_value"]],
-        name="Correlation"
-    ))
-    lag_fig.add_hline(y=0, line_dash="dash", line_color=CYBERPUNK_COLORS['neon_pink'])
-
-    lag_fig.update_layout(
-        title="Lag Analysis: Max[Z] → VIX Change (positive lag = GCP leads market)",
-        height=350,
-        paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-        plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
-        font=dict(color=CYBERPUNK_COLORS['text_primary']),
-        xaxis_title="Lag (days)",
-        yaxis_title="Correlation (r)"
-    )
-    lag_fig.update_xaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
-    lag_fig.update_yaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
-
-    return summary_stats, correlation_table, ts_fig, corr_fig, bt_fig, lag_fig
-
+# Standalone app for direct execution
+app = None
 
 if __name__ == "__main__":
+    app = dash.Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
+    app.title = "GCP Holmberg Analysis"
+    app.layout = create_layout()
+    register_callbacks(app)
+
     print("GCP Holmberg Analysis Dashboard")
     print("=" * 50)
     print("Starting server at http://localhost:8052")
