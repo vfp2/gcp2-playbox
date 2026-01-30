@@ -216,18 +216,30 @@ def lag_analysis(gcp_series, market_series, max_lag=5):
 
 # ───────────────────────────── Backtesting Simulation ─────────────────────
 def run_backtest(merged_df: pd.DataFrame, signal_col: str = "max_rolling_z",
-                 threshold_pct: float = 75, hold_days: int = 1) -> pd.DataFrame:
+                 threshold_pct: float = 75, hold_days: int = 1,
+                 threshold_data: pd.DataFrame = None) -> pd.DataFrame:
     """
     Run a simple backtesting simulation based on Max[Z] signals.
 
     Strategy: Go long SPY when Max[Z] exceeds the Nth percentile threshold.
     This replicates Holmberg's out-of-sample trading tests.
+
+    Args:
+        merged_df: Data to run backtest on (out-of-sample period)
+        signal_col: Column containing the signal values
+        threshold_pct: Percentile threshold (e.g., 75 for P75)
+        hold_days: Number of days to hold position after signal
+        threshold_data: Optional separate data to calculate threshold from (in-sample).
+                       If None, uses merged_df (in-sample = out-of-sample).
     """
     if merged_df.empty or signal_col not in merged_df.columns:
         return pd.DataFrame()
 
     df = merged_df.copy().sort_values("date").reset_index(drop=True)
-    threshold = df[signal_col].quantile(threshold_pct / 100)
+
+    # Calculate threshold from in-sample data (or same data if not specified)
+    thresh_df = threshold_data if threshold_data is not None and not threshold_data.empty else df
+    threshold = thresh_df[signal_col].quantile(threshold_pct / 100)
 
     # Initialize portfolio tracking
     portfolio_value = 100.0
@@ -490,13 +502,20 @@ def register_callbacks(app):
                     empty_fig, empty_fig, empty_fig, empty_fig
                 )
 
-            # Filter by backtest start date if provided
+            # Filter by backtest start date if provided (for out-of-sample testing)
             backtest_merged = merged.copy()
+            in_sample_data = merged.copy()  # Data used to calculate threshold
             if backtest_start_date:
                 backtest_start = pd.to_datetime(backtest_start_date)
+                # Out-of-sample: test on data FROM start date
                 backtest_merged = merged[merged["date"] >= backtest_start].copy()
+                # In-sample: calculate threshold on data BEFORE start date
+                in_sample_data = merged[merged["date"] < backtest_start].copy()
                 if len(backtest_merged) < 5:
                     backtest_merged = merged.copy()  # Fall back to all data if too few points
+                    in_sample_data = merged.copy()
+                elif len(in_sample_data) < 10:
+                    in_sample_data = merged.copy()  # Fall back if not enough in-sample data
 
             # Calculate correlations (on full merged data)
             rz_vix_r, rz_vix_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["vix_close"].values)
@@ -511,7 +530,9 @@ def register_callbacks(app):
                 rz_custom_r, rz_custom_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["custom_return"].values)
 
             # Run backtest (uses filtered data if start date provided)
-            backtest = run_backtest(backtest_merged, "max_rolling_z", threshold_pct, hold_days)
+            # threshold_data=in_sample_data ensures threshold is calculated on pre-start data
+            backtest = run_backtest(backtest_merged, "max_rolling_z", threshold_pct, hold_days,
+                                    threshold_data=in_sample_data)
 
             # Run lag analysis
             lags = lag_analysis(merged["max_rolling_z"], merged["vix_change"])
