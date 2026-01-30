@@ -4,6 +4,12 @@
 
 This experiment implements a sophisticated web-based analysis tool for exploring Global Consciousness Project (GCP) EGG data using rolling windows and statistical analysis. The application provides an interactive interface to analyze GCP v1.0 egg data stored in BigQuery, reproducing Nelson-style statistical analysis with real-time parameter adjustment.
 
+## What You Can Explore
+
+### GCP Analysis Portal
+
+The main visualization app lets you explore cumulative chi-squared deviation from randomness using either GCP1's Stouffer Z method or GCP2's rolling Z-normalized network coherence. You can compare the global network against individual clusters or drill down to any of the 473 individual RNG devices to see if specific units show stronger anomalies. The graph plots cumulative Σ(Z² - 1) over time with a 95% significance envelope - when the line breaks outside the envelope, you're seeing statistically significant departure from randomness. You can scrub through 25+ years of data, adjust bin sizes, and toggle between data sources to visually compare how GCP1 eggs vs GCP2 devices behave during the same events.
+
 ## Key Features
 
 - **Interactive Web Interface**: Dash-based web application with real-time parameter controls

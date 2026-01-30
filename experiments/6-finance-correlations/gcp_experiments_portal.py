@@ -380,8 +380,8 @@ def create_portal_layout():
                     html.Div([
                         html.A(
                             "→ HOLMBERG ANALYSIS (GCP2)",
-                            href="http://localhost:8052/",
-                            target="_blank",
+                            href="/experiment-6/",
+                            target="_self",
                             className="experiment-link",
                             style={
                                 "fontSize": "16px",
@@ -390,59 +390,11 @@ def create_portal_layout():
                                 "border": f"2px solid {CYBERPUNK_COLORS['neon_green']}",
                                 "borderRadius": "25px",
                                 "display": "inline-block",
-                                "textDecoration": "none",
-                                "marginRight": "15px"
-                            }
-                        ),
-                        html.A(
-                            "→ REAL-TIME PREDICTOR",
-                            href="/experiment-6/",
-                            target="_self",
-                            className="experiment-link",
-                            style={
-                                "fontSize": "16px",
-                                "fontFamily": "'Orbitron', monospace",
-                                "padding": "10px 20px",
-                                "border": f"2px solid {CYBERPUNK_COLORS['neon_cyan']}",
-                                "borderRadius": "25px",
-                                "display": "inline-block",
                                 "textDecoration": "none"
                             }
                         )
                     ])
                 ], className="experiment-card")
-            ]),
-            
-            # Future Experiments Section
-            html.Div([
-                html.H4("RESEARCH PIPELINE", 
-                       style={
-                           "color": CYBERPUNK_COLORS['neon_yellow'],
-                           "fontSize": "1.1rem",
-                           "fontWeight": "bold",
-                           "marginTop": "40px",
-                           "marginBottom": "20px",
-                           "fontFamily": "'Orbitron', monospace",
-                           "textAlign": "center"
-                       }),
-                html.Div([
-                    html.Div([
-                        "• Hurst Exponent Analysis (Experiment #3)",
-                        html.Span("PLANNED", className="status-badge status-planned")
-                    ], style={"marginBottom": "10px", "color": CYBERPUNK_COLORS['text_secondary']}),
-                    html.Div([
-                        "• Network Correlation Mapping",
-                        html.Span("PLANNED", className="status-badge status-planned")
-                    ], style={"marginBottom": "10px", "color": CYBERPUNK_COLORS['text_secondary']}),
-                    html.Div([
-                        "• Real-time Event Detection",
-                        html.Span("PLANNED", className="status-badge status-planned")
-                    ], style={"marginBottom": "10px", "color": CYBERPUNK_COLORS['text_secondary']}),
-                ], style={
-                    "fontFamily": "'Courier Prime', monospace",
-                    "fontSize": "14px",
-                    "textAlign": "center"
-                })
             ])
         ], style={
             "maxWidth": "1200px",
@@ -498,7 +450,7 @@ if __name__ == "__main__":
     print("GCP Experiments Portal starting...")
     print("Portal: http://localhost:8050")
     print("EGG Analysis: http://localhost:8051")
-    print("Financial Analysis: http://localhost:8050/experiment-6")
+    print("Holmberg Analysis: http://localhost:8050/experiment-6/")
     print("Neural interface online...")
-    
+
     app.run(debug=True, host="0.0.0.0", port=8050)
