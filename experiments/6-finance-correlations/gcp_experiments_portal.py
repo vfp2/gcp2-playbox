@@ -378,7 +378,7 @@ def create_portal_layout():
                     html.Div([
                         html.A(
                             "→ HOLMBERG ANALYSIS (GCP2)",
-                            href="http://localhost:8052/",
+                            href="https://gcpholmberg.fp2.dev",
                             target="_blank",
                             className="experiment-link",
                             style={
@@ -446,9 +446,9 @@ def display_page(pathname):
 # ───────────────────────────── main server ────────────────────────────────
 if __name__ == "__main__":
     print("GCP Experiments Portal starting...")
-    print("Portal: http://localhost:8050")
-    print("EGG Analysis: http://localhost:8051")
-    print("Holmberg Analysis: Run holmberg_dashboard.py separately (port 8052)")
+    print("Portal: http://localhost:8050 (gcp.fp2.dev)")
+    print("EGG Analysis: http://localhost:8051 (gcpeggs.fp2.dev)")
+    print("Holmberg Analysis: http://localhost:8052 (gcpholmberg.fp2.dev)")
     print("Neural interface online...")
 
     app.run(debug=True, host="0.0.0.0", port=8050)
