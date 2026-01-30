@@ -149,10 +149,7 @@ def compute_daily_gcp_metrics(gcp_df: pd.DataFrame) -> pd.DataFrame:
 
 def compute_market_hours_metrics(gcp_df: pd.DataFrame) -> pd.DataFrame:
     """Compute metrics using only US market hours (14:30-21:00 UTC)."""
-    market = gcp_df[
-        (gcp_df["hour_utc"] >= 15) | (gcp_df["hour_utc"] < 21)
-    ].copy()
-    # Rough filter for 14:30-21:00 range
+    # Filter for 14:30-21:00 UTC (9:30 AM - 4:00 PM ET)
     market = gcp_df[
         ((gcp_df["hour_utc"] == 14) & (gcp_df["datetime_utc"].dt.minute >= 30)) |
         ((gcp_df["hour_utc"] >= 15) & (gcp_df["hour_utc"] < 21))
