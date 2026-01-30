@@ -638,31 +638,57 @@ def update_analysis(n_clicks, months, threshold_pct, hold_days, backtest_start_d
     })
 
     # ── Time Series Chart ──
-    n_rows = 4 if has_custom_ticker else 3
-    subplot_titles = ["Max Rolling-Z (GCP2)", "VIX Level", "SPY Price"]
+    # Compute rolling correlations (30-day window)
+    rolling_window = 30
+    merged_sorted = merged.sort_values("date").copy()
+    merged_sorted["rolling_corr_vix"] = merged_sorted["max_rolling_z"].rolling(rolling_window).corr(merged_sorted["vix_change"])
+    merged_sorted["rolling_corr_spy"] = merged_sorted["max_rolling_z"].rolling(rolling_window).corr(merged_sorted["spy_return"])
     if has_custom_ticker:
-        subplot_titles.append(f"{custom_ticker_name} Price")
+        merged_sorted["rolling_corr_custom"] = merged_sorted["max_rolling_z"].rolling(rolling_window).corr(merged_sorted["custom_return"])
+
+    n_rows = 5 if has_custom_ticker else 4
+    subplot_titles = ["Max Rolling-Z (GCP2)", "VIX Level", "SPY Price", "Rolling Correlation (30-day)"]
+    if has_custom_ticker:
+        subplot_titles.insert(3, f"{custom_ticker_name} Price")
 
     ts_fig = make_subplots(rows=n_rows, cols=1, shared_xaxes=True,
                            subplot_titles=subplot_titles,
-                           vertical_spacing=0.06)
+                           vertical_spacing=0.05)
 
-    ts_fig.add_trace(go.Scatter(x=merged["date"], y=merged["max_rolling_z"],
+    ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["max_rolling_z"],
                                 mode="lines", name="Max Rolling-Z",
                                 line=dict(color=CYBERPUNK_COLORS['neon_purple'])), row=1, col=1)
-    ts_fig.add_trace(go.Scatter(x=merged["date"], y=merged["vix_close"],
+    ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["vix_close"],
                                 mode="lines", name="VIX",
                                 line=dict(color=CYBERPUNK_COLORS['neon_pink'])), row=2, col=1)
-    ts_fig.add_trace(go.Scatter(x=merged["date"], y=merged["spy_close"],
+    ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["spy_close"],
                                 mode="lines", name="SPY",
                                 line=dict(color=CYBERPUNK_COLORS['neon_green'])), row=3, col=1)
 
     if has_custom_ticker:
-        ts_fig.add_trace(go.Scatter(x=merged["date"], y=merged["custom_close"],
+        ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["custom_close"],
                                     mode="lines", name=custom_ticker_name,
                                     line=dict(color=CYBERPUNK_COLORS['neon_yellow'])), row=4, col=1)
+        corr_row = 5
+    else:
+        corr_row = 4
 
-    chart_height = 750 if has_custom_ticker else 600
+    # Add rolling correlation traces
+    ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["rolling_corr_vix"],
+                                mode="lines", name="r(Z, VIX Δ)",
+                                line=dict(color=CYBERPUNK_COLORS['neon_pink'], width=1.5)), row=corr_row, col=1)
+    ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["rolling_corr_spy"],
+                                mode="lines", name="r(Z, SPY %)",
+                                line=dict(color=CYBERPUNK_COLORS['neon_green'], width=1.5)), row=corr_row, col=1)
+    if has_custom_ticker:
+        ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["rolling_corr_custom"],
+                                    mode="lines", name=f"r(Z, {custom_ticker_name} %)",
+                                    line=dict(color=CYBERPUNK_COLORS['neon_yellow'], width=1.5)), row=corr_row, col=1)
+    # Add zero line for correlation reference
+    ts_fig.add_hline(y=0, line_dash="dash", line_color=CYBERPUNK_COLORS['text_secondary'],
+                     line_width=1, row=corr_row, col=1)
+
+    chart_height = 900 if has_custom_ticker else 750
     ts_fig.update_layout(
         title="Time Series: GCP2 Max[Z] vs Market Indicators",
         height=chart_height,
@@ -674,6 +700,8 @@ def update_analysis(n_clicks, months, threshold_pct, hold_days, backtest_start_d
     )
     ts_fig.update_xaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
     ts_fig.update_yaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
+    # Set y-axis range for correlation panel
+    ts_fig.update_yaxes(range=[-1, 1], row=corr_row, col=1)
 
     # ── Correlation Scatter Chart ──
     n_scatter_cols = 3 if has_custom_ticker else 2
