@@ -139,10 +139,15 @@ def fetch_market_data(start_date: str, end_date: str, custom_ticker: str = "") -
         print("yfinance not installed. Run: pip install yfinance")
         return pd.DataFrame()
 
-    spy = yf.download("SPY", start=start_date, end=end_date, progress=False)
-    vix = yf.download("^VIX", start=start_date, end=end_date, progress=False)
+    try:
+        spy = yf.download("SPY", start=start_date, end=end_date, progress=False)
+        vix = yf.download("^VIX", start=start_date, end=end_date, progress=False)
+    except Exception as e:
+        print(f"yfinance download error: {e}")
+        return pd.DataFrame()
 
     if spy.empty:
+        print(f"yfinance returned empty data for SPY ({start_date} to {end_date})")
         return pd.DataFrame()
 
     if isinstance(spy.columns, pd.MultiIndex):
