@@ -43,8 +43,6 @@ CYBERPUNK_COLORS = {
 # ───────────────────────────── portal app setup ────────────────────────────────
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "GCP Experiments Portal"
-from app.web.dashboard import mount_dashboard  # mount new dashboard under same server
-_mounted = mount_dashboard(app.server, base_path="/experiment-6/")
 
 # Cyberpunk CSS with enhanced matrix-style animations
 app.index_string = '''
@@ -380,8 +378,8 @@ def create_portal_layout():
                     html.Div([
                         html.A(
                             "→ HOLMBERG ANALYSIS (GCP2)",
-                            href="/experiment-6/",
-                            target="_self",
+                            href="http://localhost:8052/",
+                            target="_blank",
                             className="experiment-link",
                             style={
                                 "fontSize": "16px",
@@ -450,7 +448,7 @@ if __name__ == "__main__":
     print("GCP Experiments Portal starting...")
     print("Portal: http://localhost:8050")
     print("EGG Analysis: http://localhost:8051")
-    print("Holmberg Analysis: http://localhost:8050/experiment-6/")
+    print("Holmberg Analysis: Run holmberg_dashboard.py separately (port 8052)")
     print("Neural interface online...")
 
     app.run(debug=True, host="0.0.0.0", port=8050)
