@@ -38,24 +38,7 @@ python holmberg_dashboard.py
 - Threshold-based backtesting simulation
 - Interactive visualizations
 
-### 2. Real-Time Predictor (`main.py serve`)
-
-Real-time market prediction system:
-
-```bash
-python main.py serve
-# Opens portal at http://localhost:8050
-# Dashboard at http://localhost:8050/experiment-6/
-```
-
-**Features:**
-- Collects live GCP data from global-mind.org
-- Fetches market data via Alpaca API
-- Real-time Max[Z] calculation
-- Direction predictions (up/down)
-- Performance tracking
-
-### 3. Command-Line Analysis (`gcp2_holmberg_analysis.py`)
+### 2. Command-Line Analysis (`gcp2_holmberg_analysis.py`)
 
 In the parent `gcp2.net-rng-data-downloaded/` directory:
 
@@ -102,15 +85,4 @@ python gcp2_holmberg_analysis.py --data-dir . --months 6
 
 ```bash
 pip install dash dash-bootstrap-components plotly pandas numpy scipy yfinance
-# For real-time predictor:
-pip install alpaca-trade-api python-dotenv
-```
-
-## Configuration
-
-For Alpaca API (real-time predictor), create `.env`:
-
-```
-ALPACA_API_KEY=your_key
-ALPACA_SECRET_KEY=your_secret
 ```
