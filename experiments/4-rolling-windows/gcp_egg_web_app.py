@@ -99,13 +99,6 @@ def get_gcp2_device_options():
             if device_dir.is_dir() and device_dir.name.isdigit():
                 device_id = device_dir.name
                 devices.append((f"device_{device_id}", f"Device {device_id}"))
-    # Hardcoded device IDs (user-requested)
-    hardcoded_devices = [
-        ("device_498", "Device 498"),
-    ]
-    for folder, name in hardcoded_devices:
-        if (folder, name) not in devices:
-            devices.append((folder, name))
     # Sort devices by numeric ID
     devices.sort(key=lambda x: int(x[0].replace("device_", "")) if x[0].replace("device_", "").isdigit() else 999999)
     return devices
