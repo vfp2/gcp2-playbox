@@ -1026,10 +1026,10 @@ app.layout = html.Div([
                     dcc.RadioItems(
                         id="gcp2-display-mode",
                         options=[
-                            {"label": " Rolling Z-normalized (comparable)", "value": "rolling_z"},
-                            {"label": " Raw cumsum(nc)", "value": "raw"},
+                            {"label": " Cumsum Σ(nc) — GCP1-comparable", "value": "raw"},
+                            {"label": " Rolling Z Σ(z²-1) — experimental", "value": "rolling_z"},
                         ],
-                        value="rolling_z",
+                        value="raw",
                         inline=True,
                         style={
                             "color": CYBERPUNK_COLORS['text_primary'],

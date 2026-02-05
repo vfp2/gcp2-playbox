@@ -118,6 +118,7 @@ def compute_daily_gcp_metrics(gcp_df: pd.DataFrame) -> pd.DataFrame:
 
     daily = gcp_df.groupby("date").agg(
         max_rolling_z=("rolling_z", lambda x: x.dropna().abs().max() if x.notna().any() else np.nan),
+        max_abs_nc=("network_coherence", lambda x: x.abs().max()),  # Raw max |nc| - GCP1-comparable
         peak_nc=("network_coherence", "max"),
         mean_nc=("network_coherence", "mean"),
         netvar=("network_coherence", lambda x: (x ** 2).mean()),
@@ -336,6 +337,19 @@ def create_layout():
                 ),
             ], width=2),
             dbc.Col([
+                html.Label("GCP Metric:", style={"color": CYBERPUNK_COLORS['neon_green']}),
+                dcc.Dropdown(
+                    id="gcp-metric-select",
+                    options=[
+                        {"label": "Max |nc| — GCP1-comparable", "value": "max_abs_nc"},
+                        {"label": "Max Rolling-Z — experimental", "value": "max_rolling_z"},
+                    ],
+                    value="max_abs_nc",
+                    clearable=False,
+                    style={"backgroundColor": CYBERPUNK_COLORS['bg_dark']}
+                ),
+            ], width=2),
+            dbc.Col([
                 html.Label("Backtest Start Date:", style={"color": CYBERPUNK_COLORS['neon_green']}),
                 dcc.DatePickerSingle(
                     id="backtest-start-date",
@@ -441,13 +455,14 @@ def register_callbacks(app):
          Output("lag-chart", "figure")],
         [Input("run-btn", "n_clicks")],
         [State("months-select", "value"),
+         State("gcp-metric-select", "value"),
          State("threshold-slider", "value"),
          State("hold-days-select", "value"),
          State("backtest-start-date", "date"),
          State("custom-ticker-input", "value")],
         prevent_initial_call=False
     )
-    def update_analysis(n_clicks, months, threshold_pct, hold_days, backtest_start_date, custom_ticker):
+    def update_analysis(n_clicks, months, gcp_metric, threshold_pct, hold_days, backtest_start_date, custom_ticker):
             """Run the full Holmberg analysis and update all visualizations."""
 
             # Load GCP2 data
@@ -522,25 +537,29 @@ def register_callbacks(app):
                 elif len(in_sample_data) < 10:
                     in_sample_data = merged.copy()  # Fall back if not enough in-sample data
 
-            # Calculate correlations (on full merged data)
-            rz_vix_r, rz_vix_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["vix_close"].values)
-            rz_dvix_r, rz_dvix_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["vix_change"].values)
-            rz_spy_r, rz_spy_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["spy_return"].values)
+            # Determine metric label for display
+            gcp_metric = gcp_metric or "max_abs_nc"  # Default to GCP1-comparable
+            metric_label = "Max |nc|" if gcp_metric == "max_abs_nc" else "Max Rolling-Z"
+
+            # Calculate correlations (on full merged data) using selected metric
+            rz_vix_r, rz_vix_p = pearson_with_pvalue(merged[gcp_metric].values, merged["vix_close"].values)
+            rz_dvix_r, rz_dvix_p = pearson_with_pvalue(merged[gcp_metric].values, merged["vix_change"].values)
+            rz_spy_r, rz_spy_p = pearson_with_pvalue(merged[gcp_metric].values, merged["spy_return"].values)
             pnc_vix_r, pnc_vix_p = pearson_with_pvalue(merged["peak_nc"].values, merged["vix_close"].values)
             pnc_spy_r, pnc_spy_p = pearson_with_pvalue(merged["peak_nc"].values, merged["spy_return"].values)
 
             # Calculate custom ticker correlations if available
             rz_custom_r, rz_custom_p = (np.nan, np.nan)
             if has_custom_ticker:
-                rz_custom_r, rz_custom_p = pearson_with_pvalue(merged["max_rolling_z"].values, merged["custom_return"].values)
+                rz_custom_r, rz_custom_p = pearson_with_pvalue(merged[gcp_metric].values, merged["custom_return"].values)
 
             # Run backtest (uses filtered data if start date provided)
             # threshold_data=in_sample_data ensures threshold is calculated on pre-start data
-            backtest = run_backtest(backtest_merged, "max_rolling_z", threshold_pct, hold_days,
+            backtest = run_backtest(backtest_merged, gcp_metric, threshold_pct, hold_days,
                                     threshold_data=in_sample_data)
 
             # Run lag analysis
-            lags = lag_analysis(merged["max_rolling_z"], merged["vix_change"])
+            lags = lag_analysis(merged[gcp_metric], merged["vix_change"])
 
             # ── Summary Stats ──
             final_excess = backtest["excess_return"].iloc[-1] if not backtest.empty else 0
@@ -627,7 +646,7 @@ def register_callbacks(app):
 
             # Build table rows
             row1_cells = [
-                html.Td("Max Rolling-Z", style={"color": CYBERPUNK_COLORS['neon_yellow']}),
+                html.Td(metric_label, style={"color": CYBERPUNK_COLORS['neon_yellow']}),
                 html.Td(f"{rz_vix_r:.4f} {sig_star(rz_vix_p)}"),
                 html.Td(f"{rz_dvix_r:.4f} {sig_star(rz_dvix_p)}"),
                 html.Td(f"{rz_spy_r:.4f} {sig_star(rz_spy_p)}"),
@@ -668,13 +687,13 @@ def register_callbacks(app):
             # Compute rolling correlations (30-day window)
             rolling_window = 30
             merged_sorted = merged.sort_values("date").copy()
-            merged_sorted["rolling_corr_vix"] = merged_sorted["max_rolling_z"].rolling(rolling_window).corr(merged_sorted["vix_change"])
-            merged_sorted["rolling_corr_spy"] = merged_sorted["max_rolling_z"].rolling(rolling_window).corr(merged_sorted["spy_return"])
+            merged_sorted["rolling_corr_vix"] = merged_sorted[gcp_metric].rolling(rolling_window).corr(merged_sorted["vix_change"])
+            merged_sorted["rolling_corr_spy"] = merged_sorted[gcp_metric].rolling(rolling_window).corr(merged_sorted["spy_return"])
             if has_custom_ticker:
-                merged_sorted["rolling_corr_custom"] = merged_sorted["max_rolling_z"].rolling(rolling_window).corr(merged_sorted["custom_return"])
+                merged_sorted["rolling_corr_custom"] = merged_sorted[gcp_metric].rolling(rolling_window).corr(merged_sorted["custom_return"])
 
             n_rows = 5 if has_custom_ticker else 4
-            subplot_titles = ["Max Rolling-Z (GCP2)", "VIX Level", "SPY Price", "Rolling Correlation (30-day)"]
+            subplot_titles = [f"{metric_label} (GCP2)", "VIX Level", "SPY Price", "Rolling Correlation (30-day)"]
             if has_custom_ticker:
                 subplot_titles.insert(3, f"{custom_ticker_name} Price")
 
@@ -682,8 +701,8 @@ def register_callbacks(app):
                                    subplot_titles=subplot_titles,
                                    vertical_spacing=0.05)
 
-            ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["max_rolling_z"],
-                                        mode="lines", name="Max Rolling-Z",
+            ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted[gcp_metric],
+                                        mode="lines", name=metric_label,
                                         line=dict(color=CYBERPUNK_COLORS['neon_purple'])), row=1, col=1)
             ts_fig.add_trace(go.Scatter(x=merged_sorted["date"], y=merged_sorted["vix_close"],
                                         mode="lines", name="VIX",
@@ -717,7 +736,7 @@ def register_callbacks(app):
 
             chart_height = 900 if has_custom_ticker else 750
             ts_fig.update_layout(
-                title="Time Series: GCP2 Max[Z] vs Market Indicators",
+                title=f"Time Series: GCP2 {metric_label} vs Market Indicators",
                 height=chart_height,
                 paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
                 plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
@@ -732,32 +751,32 @@ def register_callbacks(app):
 
             # ── Correlation Scatter Chart ──
             n_scatter_cols = 3 if has_custom_ticker else 2
-            scatter_titles = ["Max[Z] vs VIX Change", "Max[Z] vs SPY Return"]
+            scatter_titles = [f"{metric_label} vs VIX Change", f"{metric_label} vs SPY Return"]
             if has_custom_ticker:
-                scatter_titles.append(f"Max[Z] vs {custom_ticker_name} Return")
+                scatter_titles.append(f"{metric_label} vs {custom_ticker_name} Return")
 
             corr_fig = make_subplots(rows=1, cols=n_scatter_cols, subplot_titles=scatter_titles)
 
             corr_fig.add_trace(go.Scatter(
-                x=merged["max_rolling_z"], y=merged["vix_change"],
+                x=merged[gcp_metric], y=merged["vix_change"],
                 mode="markers", name="vs VIX",
                 marker=dict(color=CYBERPUNK_COLORS['neon_pink'], size=5, opacity=0.6)
             ), row=1, col=1)
 
             corr_fig.add_trace(go.Scatter(
-                x=merged["max_rolling_z"], y=merged["spy_return"] * 100,
+                x=merged[gcp_metric], y=merged["spy_return"] * 100,
                 mode="markers", name="vs SPY%",
                 marker=dict(color=CYBERPUNK_COLORS['neon_green'], size=5, opacity=0.6)
             ), row=1, col=2)
 
             if has_custom_ticker:
                 corr_fig.add_trace(go.Scatter(
-                    x=merged["max_rolling_z"], y=merged["custom_return"] * 100,
+                    x=merged[gcp_metric], y=merged["custom_return"] * 100,
                     mode="markers", name=f"vs {custom_ticker_name}%",
                     marker=dict(color=CYBERPUNK_COLORS['neon_yellow'], size=5, opacity=0.6)
                 ), row=1, col=3)
 
-            title_str = f"Scatter: Max[Z] Correlations (r_VIX={rz_dvix_r:.3f}, r_SPY={rz_spy_r:.3f}"
+            title_str = f"Scatter: {metric_label} Correlations (r_VIX={rz_dvix_r:.3f}, r_SPY={rz_spy_r:.3f}"
             if has_custom_ticker and not np.isnan(rz_custom_r):
                 title_str += f", r_{custom_ticker_name}={rz_custom_r:.3f}"
             title_str += ")"
@@ -769,7 +788,7 @@ def register_callbacks(app):
                 plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],
                 font=dict(color=CYBERPUNK_COLORS['text_primary']),
             )
-            corr_fig.update_xaxes(title_text="Max Rolling-Z", gridcolor=CYBERPUNK_COLORS['bg_light'])
+            corr_fig.update_xaxes(title_text=metric_label, gridcolor=CYBERPUNK_COLORS['bg_light'])
             corr_fig.update_yaxes(gridcolor=CYBERPUNK_COLORS['bg_light'])
 
             # ── Backtest Chart ──
@@ -777,7 +796,7 @@ def register_callbacks(app):
             if not backtest.empty:
                 bt_fig.add_trace(go.Scatter(
                     x=backtest["date"], y=backtest["portfolio_value"],
-                    mode="lines", name=f"Max[Z] Strategy (P{threshold_pct})",
+                    mode="lines", name=f"{metric_label} Strategy (P{threshold_pct})",
                     line=dict(color=CYBERPUNK_COLORS['neon_cyan'], width=2)
                 ))
                 bt_fig.add_trace(go.Scatter(
@@ -786,7 +805,7 @@ def register_callbacks(app):
                     line=dict(color=CYBERPUNK_COLORS['text_secondary'], width=2, dash="dash")
                 ))
 
-            backtest_title = f"Backtest: Max[Z] > P{threshold_pct} Strategy vs Buy & Hold"
+            backtest_title = f"Backtest: {metric_label} > P{threshold_pct} Strategy vs Buy & Hold"
             if backtest_start_date:
                 backtest_title += f" (from {backtest_start_str})"
             backtest_title += f" | Excess: {final_excess:+.1f}%"
@@ -814,7 +833,7 @@ def register_callbacks(app):
             lag_fig.add_hline(y=0, line_dash="dash", line_color=CYBERPUNK_COLORS['neon_pink'])
 
             lag_fig.update_layout(
-                title="Lag Analysis: Max[Z] → VIX Change (positive lag = GCP leads market)",
+                title=f"Lag Analysis: {metric_label} → VIX Change (positive lag = GCP leads market)",
                 height=350,
                 paper_bgcolor=CYBERPUNK_COLORS['bg_dark'],
                 plot_bgcolor=CYBERPUNK_COLORS['bg_dark'],

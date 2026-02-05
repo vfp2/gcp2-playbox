@@ -29,7 +29,7 @@ def serve(host: Optional[str] = typer.Option(None), port: Optional[int] = typer.
     h = host or cfg.env.DASH_HOST
     p = cfg.env.DASH_PORT if port is None else port
     typer.echo(f"Serving portal on http://{h}:{p} (dashboard at /experiment-6/)")
-    portal_app.run_server(host=h, port=p, debug=False)
+    portal_app.run(host=h, port=p, debug=False)
 
 
 @app.command()

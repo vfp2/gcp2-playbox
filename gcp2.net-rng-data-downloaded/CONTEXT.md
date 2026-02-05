@@ -48,12 +48,12 @@ GCP2's `network_coherence` metric is fundamentally different from GCP1's Stouffe
 | Skewness | 0 | ~2.8 |
 | Kurtosis | 3 | ~12 |
 
-**Correct methodology for GCP2**:
-1. Compute a rolling Z-score of `network_coherence` over a 1-hour (3600s) window
-2. Rolling Z: `z_t = (nc_t - rolling_mean) / rolling_std`
-3. Daily Max[Z] = max(|rolling_z|) per day
+**Update (Jan 2026)**: The distribution properties of `network_coherence` (variance ~2.0, skewness ~2.8, kurtosis ~12) closely match a chi-squared(1) distribution, suggesting it may already be analogous to (Z² - 1). This means:
 
-This normalizes GCP2's non-standard metric into something comparable to Holmberg's Max[Z].
+- **For cumulative deviation plots**: Raw `cumsum(network_coherence)` is the GCP1-comparable metric
+- **Rolling Z normalization**: Experimental — may introduce autocorrelation artifacts over longer time windows
+
+The apps now default to raw cumsum for GCP1 comparability, with rolling Z available as an experimental option.
 
 ---
 
