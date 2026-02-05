@@ -1,6 +1,6 @@
 # GCP2 Data Analysis Context
 
-**Last Updated**: January 2026
+**Last Updated**: February 2026
 
 ## Summary
 
@@ -36,24 +36,62 @@ This folder contains downloaded GCP2 (Global Consciousness Project 2.0) random n
 
 ---
 
-## Critical: GCP2 network_coherence Is NOT a Z-score
+## GCP2 Network Coherence: Official Formula
 
-GCP2's `network_coherence` metric is fundamentally different from GCP1's Stouffer Z:
+From Plonka et al. (2026) "Correlations between onsite and global networks of random number generators during group healing meditations" (EXPLORE journal):
 
-| Property | GCP1 Stouffer Z | GCP2 network_coherence |
-|----------|-----------------|------------------------|
-| Type | Standard normal Z-score | Pre-whitened coherence metric |
-| Distribution | N(0,1) | Bounded at -1.0, right-skewed |
-| Variance | 1.0 | ~2.0 |
-| Skewness | 0 | ~2.8 |
-| Kurtosis | 3 | ~12 |
+### Network Coherence (Amplitude) — Per Second
 
-**Update (Jan 2026)**: The distribution properties of `network_coherence` (variance ~2.0, skewness ~2.8, kurtosis ~12) closely match a chi-squared(1) distribution, suggesting it may already be analogous to (Z² - 1). This means:
+```
+C(t) = (1 / √R(t)) × Σᵣ(Z²ᵣ,ₜ - 1)
+```
 
-- **For cumulative deviation plots**: Raw `cumsum(network_coherence)` is the GCP1-comparable metric
-- **Rolling Z normalization**: Experimental — may introduce autocorrelation artifacts over longer time windows
+Where:
+- Each RNG outputs 10,000 bits/second, first 200 bits summed → expected μ=100, σ=√50≈7.07
+- **Z** = (output - μ) / σ (normalized to standard normal)
+- **Z² - 1** centers the chi-squared at 0 (mean of Z² is 1)
+- **R(t)** = number of active RNGs at time t
+- Sum across all RNGs, divide by √R for scaling
 
-The apps now default to raw cumsum for GCP1 comparability, with rolling Z available as an experimental option.
+### Cumulative Network Coherence
+
+```
+Cumulative = Σₜ C(t)
+```
+
+The cumulative sum over time detects departure from randomness.
+
+### What This Means for Our Code
+
+The `network_coherence` column in GCP2 CSV files **is already the computed C(t)** — the per-second Network Coherence (Amplitude). Therefore:
+
+| Approach | Correct? | Notes |
+|----------|----------|-------|
+| `cumsum(network_coherence)` | ✓ Yes | Directly gives cumulative Network Coherence |
+| Rolling Z normalization | ✗ No | Double-processes an already-normalized metric |
+
+### Distribution Properties (observed)
+
+| Property | Expected (theory) | Observed |
+|----------|-------------------|----------|
+| Mean | 0 | ~0 |
+| Variance | 2 | ~2.0 |
+| Skewness | 2√2 ≈ 2.83 | ~2.8 |
+| Kurtosis | 12 | ~12 |
+
+These match chi-squared(1) shifted by -1, confirming the formula.
+
+### GCP1 vs GCP2 Methodology Comparison
+
+| Step | GCP1 (Stouffer method) | GCP2 (Amplitude method) |
+|------|------------------------|-------------------------|
+| 1 | Z per egg | Z per RNG |
+| 2 | Combine: Stouffer Z = Σ(Z)/√N | Square each: Z² |
+| 3 | Square: (Stouffer Z)² | Subtract 1: Z² - 1 |
+| 4 | Subtract 1: (Stouffer Z)² - 1 | Combine: Σ(Z² - 1)/√N |
+| 5 | Cumsum | Cumsum |
+
+Both detect departure from randomness via chi-squared methodology, but combine individual RNG outputs differently.
 
 ---
 
@@ -194,4 +232,5 @@ Current issues: The app is "not very well functioning" - may need significant re
 - GCP2.net: https://gcp2.net/
 - GCP1 Historical: https://noosphere.princeton.edu/gcpdata.html
 - Holmberg 2024: https://doi.org/10.1108/JES-11-2023-0663
+- Plonka et al. 2026: https://doi.org/10.1016/j.explore.2025.103312 (Network Coherence formula)
 - Global-mind.org recipes: https://global-mind.org/recipe.html
