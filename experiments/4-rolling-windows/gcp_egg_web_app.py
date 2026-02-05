@@ -78,6 +78,7 @@ GCP2_NETWORKS = [
     ("cluster_edmonton", "Edmonton"),
     ("cluster_hong_kong", "Hong Kong"),
     ("cluster_hyderabad", "Hyderabad"),
+    ("cluster_lagos", "Lagos"),
     ("cluster_london", "London"),
     ("cluster_los_angeles", "Los Angeles"),
     ("cluster_madrid", "Madrid"),
@@ -88,6 +89,8 @@ GCP2_NETWORKS = [
     ("cluster_seoul_korea", "Seoul, Korea"),
     ("cluster_stockolm", "Stockholm"),
     ("cluster_tel_aviv", "Tel Aviv"),
+    ("research_tower_dispenza_n10a", "Research Tower Dispenza N10A"),
+    ("research_tower_hmi_n10a", "Research Tower HMI N10A"),
 ]
 
 # GCP2 individual device options - dynamically populated + hardcoded examples
