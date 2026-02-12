@@ -33,6 +33,14 @@ import dash_bootstrap_components as dbc
 GCP2_DATA_DIR = Path(__file__).parent.parent.parent / "gcp2.net-rng-data-downloaded"
 GCP2_NETWORK_DIR = GCP2_DATA_DIR / "network"
 
+# Import GCP2 data provider (for API + CSV hybrid data access)
+sys.path.insert(0, str(GCP2_DATA_DIR))
+try:
+    from gcp2_data_provider import get_cluster_coherence as _get_cluster_coherence
+    GCP2_DATA_PROVIDER_AVAILABLE = True
+except ImportError:
+    GCP2_DATA_PROVIDER_AVAILABLE = False
+
 ROLLING_WINDOW = 3600  # 1-hour rolling window for Z-score computation
 MIN_ROLLING_PERIODS = 360  # minimum 6 minutes of data
 
@@ -52,7 +60,32 @@ CYBERPUNK_COLORS = {
 # ───────────────────────────── GCP2 Data Loading ──────────────────────────
 @lru_cache(maxsize=4)
 def load_gcp2_network_data(months: int = 6) -> pd.DataFrame:
-    """Load GCP2 Global Network data for the specified number of recent months."""
+    """Load GCP2 Global Network data for the specified number of recent months.
+
+    Uses the data provider (API + CSV hybrid) if available, otherwise falls back
+    to direct CSV loading.
+    """
+    # Calculate time range
+    end_ts = datetime.now(timezone.utc).timestamp()
+    if months > 0:
+        start_ts = (datetime.now(timezone.utc) - timedelta(days=months * 30)).timestamp()
+    else:
+        # All available data - start from March 2024 (GCP2 network data beginning)
+        start_ts = datetime(2024, 3, 1, tzinfo=timezone.utc).timestamp()
+
+    # Try using data provider (supports API + CSV hybrid)
+    if GCP2_DATA_PROVIDER_AVAILABLE:
+        try:
+            combined = _get_cluster_coherence("global_network", start_ts, end_ts)
+            if not combined.empty:
+                combined["datetime_utc"] = pd.to_datetime(combined["epoch_time_utc"], unit="s", utc=True)
+                combined["date"] = combined["datetime_utc"].dt.date
+                combined["hour_utc"] = combined["datetime_utc"].dt.hour
+                return combined
+        except Exception as e:
+            print(f"Data provider error, falling back to CSV: {e}")
+
+    # Fallback: Direct CSV loading
     network_dir = GCP2_NETWORK_DIR / "global_network"
     if not network_dir.exists():
         return pd.DataFrame()

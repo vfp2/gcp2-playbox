@@ -67,6 +67,16 @@ bqs_client = BigQueryReadClient()
 GCP2_DATA_DIR = Path(__file__).parent.parent.parent / "gcp2.net-rng-data-downloaded"
 GCP2_NETWORK_DIR = GCP2_DATA_DIR / "network"
 GCP2_DEVICE_DIR = GCP2_DATA_DIR / "devices"
+
+# Import GCP2 data provider for unified CSV + API access
+import sys
+sys.path.insert(0, str(GCP2_DATA_DIR))
+try:
+    from gcp2_data_provider import get_cluster_coherence as _get_cluster_coherence
+    GCP2_DATA_PROVIDER_AVAILABLE = True
+except ImportError:
+    GCP2_DATA_PROVIDER_AVAILABLE = False
+    print("Warning: gcp2_data_provider not available, falling back to CSV-only mode")
 GCP2_DATE_MIN = _dt(2024, 3, 1, tzinfo=_tz.utc).date()
 ROLLING_WINDOW_SECONDS = 3600  # 1 hour for rolling Z-score
 MIN_ROLLING_PERIODS = 360      # 6 minutes minimum
@@ -537,41 +547,58 @@ def query_gcp2(start_ts: float, window_s: int, bins: int, network: str = "global
             return pd.DataFrame()
         source_info = f"Device {device_id}"
     else:
-        # Get relevant monthly CSV files for network/cluster
-        csv_files = get_gcp2_monthly_files(network, start_ts, end_ts)
-        if not csv_files:
-            print(f"\n===== GCP2 Data =====")
-            print(f"No data files found for {network} in range {_dt.fromtimestamp(start_ts, _tz.utc)} to {_dt.fromtimestamp(end_ts, _tz.utc)}")
-            print("=====================\n")
-            return pd.DataFrame()
-
-        # Load and concatenate data
-        frames = []
-        for csv_path in csv_files:
+        # Load network/cluster data via data provider (CSV + API hybrid)
+        if GCP2_DATA_PROVIDER_AVAILABLE:
             try:
-                df = pd.read_csv(csv_path)
-                frames.append(df)
+                data = _get_cluster_coherence(network, start_ts, end_ts)
+                if data.empty:
+                    print(f"\n===== GCP2 Data =====")
+                    print(f"No data for {network} in range {_dt.fromtimestamp(start_ts, _tz.utc)} to {_dt.fromtimestamp(end_ts, _tz.utc)}")
+                    print("=====================\n")
+                    return pd.DataFrame()
+                source_info = f"{network} (via data provider)"
             except Exception as e:
-                print(f"Error loading {csv_path}: {e}")
-                continue
+                print(f"Error loading data via provider: {e}, falling back to CSV")
+                data = None
+        else:
+            data = None
 
-        if not frames:
-            return pd.DataFrame()
+        # Fallback to CSV-only loading if data provider unavailable or failed
+        if data is None or data.empty:
+            csv_files = get_gcp2_monthly_files(network, start_ts, end_ts)
+            if not csv_files:
+                print(f"\n===== GCP2 Data =====")
+                print(f"No data files found for {network} in range {_dt.fromtimestamp(start_ts, _tz.utc)} to {_dt.fromtimestamp(end_ts, _tz.utc)}")
+                print("=====================\n")
+                return pd.DataFrame()
 
-        combined = pd.concat(frames, ignore_index=True)
-        combined.sort_values("epoch_time_utc", inplace=True)
+            # Load and concatenate data
+            frames = []
+            for csv_path in csv_files:
+                try:
+                    df = pd.read_csv(csv_path)
+                    frames.append(df)
+                except Exception as e:
+                    print(f"Error loading {csv_path}: {e}")
+                    continue
 
-        # Filter to exact time window
-        mask = (combined["epoch_time_utc"] >= start_ts) & (combined["epoch_time_utc"] < end_ts)
-        data = combined[mask].copy()
+            if not frames:
+                return pd.DataFrame()
 
-        if data.empty:
-            print(f"\n===== GCP2 Data =====")
-            print(f"No data in time range for {network}")
-            print("=====================\n")
-            return pd.DataFrame()
+            combined = pd.concat(frames, ignore_index=True)
+            combined.sort_values("epoch_time_utc", inplace=True)
 
-        source_info = f"{network}, Files: {len(csv_files)}"
+            # Filter to exact time window
+            mask = (combined["epoch_time_utc"] >= start_ts) & (combined["epoch_time_utc"] < end_ts)
+            data = combined[mask].copy()
+
+            if data.empty:
+                print(f"\n===== GCP2 Data =====")
+                print(f"No data in time range for {network}")
+                print("=====================\n")
+                return pd.DataFrame()
+
+            source_info = f"{network}, Files: {len(csv_files)}"
 
     # Compute rolling Z-score of network_coherence
     nc = data["network_coherence"]

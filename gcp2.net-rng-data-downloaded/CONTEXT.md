@@ -141,11 +141,82 @@ Using GCP1 data (BigQuery) and Alpaca market data:
 
 ---
 
+## GCP2 API Access (graphql.rng.observer)
+
+As of February 2026, GCP2 data is available via a public REST API at `https://graphql.rng.observer`.
+
+### API Endpoints
+
+| Endpoint | Method | Parameters | Description |
+|----------|--------|------------|-------------|
+| `/api/rest/search/clusters` | GET | `query`, `limit`, `offset` | List available clusters |
+| `/api/rest/search/devices` | GET | `query`, `limit`, `offset` | List available devices |
+| `/api/rest/cluster-history` | GET | `clusterName`, `limit`, `offset` | Get cluster coherence history |
+| `/api/rest/device-history` | GET | `limit`, `offset` | Get device coherence history |
+
+**No authentication required** - API is publicly accessible.
+
+### API Response Format
+
+```json
+{
+  "cluster": {
+    "name": "Global Network",
+    "history": [
+      {"timestamp": 1770767994, "coherence": -0.6256, "activeDevices": 362},
+      ...
+    ]
+  }
+}
+```
+
+### Available Clusters
+
+- **Global Network** (aggregate of all devices)
+- Cluster Cape Town ZA, Cluster Edmonton, Cluster Hong Kong, Cluster Hyderabad
+- Cluster Lagos, Cluster London, Cluster Los Angeles, Cluster Madrid
+- Cluster Mexico City, Cluster New York City, Cluster Puerto Rico
+- Cluster Seoul Korea, Cluster Stockolm, Cluster São Paulo, Cluster Tel-Aviv
+- Research Tower HMI N10A, Research Tower Dispenza N10A
+
+### Pagination
+
+- Max 10,080 records per request (~1 week of second-level data)
+- Use `offset` parameter for pagination
+- Data returned in reverse chronological order (newest first)
+
+---
+
 ## Scripts
 
-### gcp2_bulk_download.py
+### gcp2_api_client.py (NEW - Preferred)
 
-Browser automation using Playwright to download from https://gcp2.net/data-results/data-download
+Python API client for graphql.rng.observer. No authentication required.
+
+```python
+from gcp2_api_client import GCP2APIClient
+
+client = GCP2APIClient()
+clusters = client.list_clusters()
+df = client.get_cluster_history("Global Network", start_ts, end_ts)
+```
+
+### gcp2_data_provider.py (NEW - Preferred)
+
+Unified interface combining historical CSV data with live API data. Uses CSV for data before Jan 27, 2026, and API for newer data.
+
+```python
+from gcp2_data_provider import get_cluster_coherence, get_available_clusters
+
+# Automatically uses CSV or API based on date range
+df = get_cluster_coherence("global_network", start_ts, end_ts)
+clusters = get_available_clusters()
+```
+
+### gcp2_bulk_download.py (DEPRECATED)
+
+Browser automation using Playwright to download from https://gcp2.net/data-results/data-download.
+Use the API client instead for new data.
 
 ```bash
 # First time: opens browser for manual login
@@ -221,7 +292,8 @@ Current issues: The app is "not very well functioning" - may need significant re
 ## Data Access Notes
 
 - **GCP1 data**: Available via BigQuery (`gcpingcp` project, `eggs_us` dataset)
-- **GCP2 data**: ZIP files in this folder (devices/ and network/ subfolders)
+- **GCP2 data (historical)**: CSV files in this folder (devices/ and network/ subfolders)
+- **GCP2 data (live/recent)**: API at https://graphql.rng.observer (use `gcp2_data_provider.py`)
 - **Market data**: Alpaca API (may return 503) or yfinance as fallback
 - Python's `zipfile` module can read ZIPs directly into memory without extraction
 
