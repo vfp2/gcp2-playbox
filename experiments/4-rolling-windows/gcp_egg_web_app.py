@@ -625,6 +625,7 @@ def query_gcp2(start_ts: float, window_s: int, bins: int, network: str = "global
     # Aggregate by bin
     binned = data.groupby("bin_idx").agg(
         nc_sum=("network_coherence", "sum"),
+        nc_mean=("network_coherence", "mean"),
         seconds_in_bin=("network_coherence", "count"),
         avg_active_devices=("active_devices", "mean"),
     ).reset_index()
@@ -1037,6 +1038,7 @@ app.layout = html.Div([
                     options=[
                         {"label": " NC (Phase) — Stouffer Z then square: (ΣZ/√N)²−1", "value": "phase"},
                         {"label": " NC (Amplitude) — square then average: Σ(Z²−1)/√N", "value": "amplitude"},
+                        {"label": " Raw NC — coherence values as-is (GCP2 only)", "value": "raw_nc"},
                     ],
                     value="phase",
                     inline=True,
@@ -1883,8 +1885,12 @@ def create_egg_callback(app_instance):
         upper_curve = envelope
         lower_curve = -envelope
 
-        # Add parabolic probability curves only if checkbox is enabled
-        if show_parabolic_curve_enabled and len(x_curve) > 0:
+        # Determine NC method from radio selection
+        nc_method = gcp2_display_mode or "phase"
+        is_raw_nc = nc_method == "raw_nc"
+
+        # Add parabolic probability curves only if checkbox is enabled and not in raw NC mode
+        if show_parabolic_curve_enabled and len(x_curve) > 0 and not is_raw_nc:
             # Add upper significance curve (p=0.05)
             fig.add_trace(go.Scatter(
                 x=x_curve,
@@ -1911,11 +1917,8 @@ def create_egg_callback(app_instance):
                 showlegend=True
             ))
 
-        # Determine NC method from radio selection
-        nc_method = gcp2_display_mode or "phase"
-
-        # Add GCP1 data trace if enabled and has data
-        if has_gcp1_data:
+        # Add GCP1 data trace if enabled and has data (skip in raw NC mode — GCP2 only)
+        if has_gcp1_data and not is_raw_nc:
             if nc_method == "amplitude":
                 y_gcp1 = df["cum_amplitude"]
                 gcp1_trace_name = "GCP1 NC (Amplitude)"
@@ -1937,12 +1940,17 @@ def create_egg_callback(app_instance):
 
         # Add GCP2 data trace if enabled and has data
         if has_gcp2_data:
-            # GCP2 CSV data only contains NC (Phase) — pre-computed on gcp2.net
-            y_gcp2 = df_gcp2["cum_nc"]
-            if nc_method == "amplitude":
-                gcp2_trace_name = f"GCP2 NC Phase* ({gcp2_network})"
+            if is_raw_nc:
+                # Raw NC mode: plot per-bin mean network coherence as-is
+                y_gcp2 = df_gcp2["nc_mean"]
+                gcp2_trace_name = f"GCP2 Raw NC ({gcp2_network})"
             else:
-                gcp2_trace_name = f"GCP2 NC Phase ({gcp2_network})"
+                # Cumulative modes: plot cumsum of NC (Phase from CSV)
+                y_gcp2 = df_gcp2["cum_nc"]
+                if nc_method == "amplitude":
+                    gcp2_trace_name = f"GCP2 NC Phase* ({gcp2_network})"
+                else:
+                    gcp2_trace_name = f"GCP2 NC Phase ({gcp2_network})"
 
             fig.add_trace(go.Scatter(
                 x=x_gcp2,
@@ -1956,8 +1964,8 @@ def create_egg_callback(app_instance):
                 )
             ))
         
-        # If pseudo entropy is enabled (only applies to GCP1), add a trace with random data
-        if use_pseudo_entropy and show_gcp1:
+        # If pseudo entropy is enabled (only applies to GCP1, skip in raw NC mode)
+        if use_pseudo_entropy and show_gcp1 and not is_raw_nc:
             # Query for pseudo entropy data (same parameters but with random values)
             # Use a different cache key to avoid conflicts with real data
             pseudo_cache_key = (start_ts, window_len, bins, filter_broken_eggs_enabled, True)
@@ -2027,7 +2035,7 @@ def create_egg_callback(app_instance):
         # Create comprehensive title
         pseudo_status = " | PSEUDO ENTROPY: ON" if use_pseudo_entropy else ""
         parabolic_status = " | Parabolic: ON" if show_parabolic_curve_enabled else ""
-        nc_method_label = "Phase" if nc_method == "phase" else "Amplitude"
+        nc_method_label = "Raw NC" if is_raw_nc else ("Phase" if nc_method == "phase" else "Amplitude")
         nc_method_str = f" | NC: {nc_method_label}"
         gcp2_amp_note = " (GCP2: Phase only*)" if nc_method == "amplitude" and has_gcp2_data else ""
         title_text = f"""
