@@ -177,14 +177,14 @@ class GCP2APIClient:
 
     def get_device_history_raw(
         self,
+        device_id: int,
         limit: int = MAX_RECORDS_PER_REQUEST,
         offset: int = 0
     ) -> dict:
         """Fetch raw device history from API (single request).
 
-        Note: This endpoint doesn't take a device ID parameter in the spec.
-
         Args:
+            device_id: Numeric device ID
             limit: Max records to fetch (max 10080)
             offset: Offset for pagination
 
@@ -193,12 +193,81 @@ class GCP2APIClient:
         """
         url = f"{self.base_url}/api/rest/device-history"
         params = {
+            "deviceId": device_id,
             "limit": min(limit, MAX_RECORDS_PER_REQUEST),
             "offset": offset
         }
         resp = self.session.get(url, params=params, timeout=60)
         resp.raise_for_status()
         return resp.json()
+
+    def get_device_history(
+        self,
+        device_id: int,
+        start_ts: Optional[float] = None,
+        end_ts: Optional[float] = None,
+        progress_callback: Optional[callable] = None
+    ) -> pd.DataFrame:
+        """Fetch device coherence history as a DataFrame.
+
+        Handles pagination automatically. Returns data in CSV-compatible format.
+
+        Args:
+            device_id: Numeric device ID
+            start_ts: Start timestamp (epoch seconds), optional
+            end_ts: End timestamp (epoch seconds), optional
+            progress_callback: Optional callback(fetched_count, message) for progress
+
+        Returns:
+            DataFrame with columns: epoch_time_utc, network_coherence, active_devices
+        """
+        all_records = []
+        offset = 0
+
+        while True:
+            if progress_callback:
+                progress_callback(len(all_records), f"Fetching device {device_id} offset {offset}...")
+
+            data = self.get_device_history_raw(device_id, MAX_RECORDS_PER_REQUEST, offset)
+            device_data = data.get("device")
+            if not device_data:
+                break
+            history = device_data.get("history", [])
+
+            if not history:
+                break
+
+            for record in history:
+                ts = record["timestamp"]
+                if start_ts is not None and ts < start_ts:
+                    continue
+                if end_ts is not None and ts > end_ts:
+                    continue
+                all_records.append(record)
+
+            # Check if we've gone past start_ts (data is newest first)
+            oldest_ts = min(r["timestamp"] for r in history)
+            if start_ts is not None and oldest_ts < start_ts:
+                break
+
+            if len(history) < MAX_RECORDS_PER_REQUEST:
+                break
+
+            offset += MAX_RECORDS_PER_REQUEST
+            time.sleep(REQUEST_DELAY)
+
+        if not all_records:
+            return pd.DataFrame(columns=["epoch_time_utc", "network_coherence", "active_devices"])
+
+        df = pd.DataFrame(all_records)
+        df = df.rename(columns={
+            "timestamp": "epoch_time_utc",
+            "coherence": "network_coherence",
+            "activeSeconds": "active_devices"  # closest analogue for devices
+        })
+
+        df = df.sort_values("epoch_time_utc").reset_index(drop=True)
+        return df
 
 
 # Cluster name to folder name mapping

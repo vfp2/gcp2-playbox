@@ -211,6 +211,103 @@ def get_cluster_coherence(
     return combined
 
 
+def load_device_csv_data(device_id: str, start_ts: float, end_ts: float) -> pd.DataFrame:
+    """Load individual device data from local ZIP files."""
+    import zipfile
+
+    device_dir = DATA_DIR / "devices" / device_id
+    if not device_dir.exists():
+        return pd.DataFrame(columns=["epoch_time_utc", "network_coherence", "active_devices"])
+
+    frames = []
+    for zip_pattern in ["*_History.csv.zip", "*_Latest.csv.zip"]:
+        for zip_path in device_dir.glob(zip_pattern):
+            try:
+                with zipfile.ZipFile(zip_path, 'r') as zf:
+                    csv_name = zf.namelist()[0]
+                    with zf.open(csv_name) as f:
+                        df = pd.read_csv(f)
+                        if not df.empty:
+                            frames.append(df)
+            except Exception as e:
+                print(f"Error loading {zip_path}: {e}")
+                continue
+
+    if not frames:
+        return pd.DataFrame(columns=["epoch_time_utc", "network_coherence", "active_devices"])
+
+    combined = pd.concat(frames, ignore_index=True)
+    combined = combined.drop_duplicates(subset=['epoch_time_utc'])
+    combined.sort_values("epoch_time_utc", inplace=True)
+
+    mask = (combined["epoch_time_utc"] >= start_ts) & (combined["epoch_time_utc"] < end_ts)
+    data = combined[mask].copy()
+
+    if data.empty:
+        return pd.DataFrame(columns=["epoch_time_utc", "network_coherence", "active_devices"])
+
+    # Normalize column names
+    if "device_coherence" in data.columns:
+        data = data.rename(columns={"device_coherence": "network_coherence"})
+    data["active_devices"] = 1
+
+    return data.sort_values("epoch_time_utc").reset_index(drop=True)
+
+
+def load_device_api_data(device_id: int, start_ts: float, end_ts: float) -> pd.DataFrame:
+    """Load individual device data from the API."""
+    client = get_api_client()
+    try:
+        df = client.get_device_history(device_id, start_ts=start_ts, end_ts=end_ts)
+        return df
+    except Exception as e:
+        print(f"Error fetching API data for device {device_id}: {e}")
+        return pd.DataFrame(columns=["epoch_time_utc", "network_coherence", "active_devices"])
+
+
+def get_device_coherence(
+    device_id: str,
+    start_ts: float,
+    end_ts: float,
+) -> pd.DataFrame:
+    """Get device coherence data for the specified time range.
+
+    Uses local CSV/ZIP files for historical data and API for recent/missing data.
+
+    Args:
+        device_id: Numeric device ID as string (e.g., "370")
+        start_ts: Start timestamp (epoch seconds)
+        end_ts: End timestamp (epoch seconds)
+
+    Returns:
+        DataFrame with columns: epoch_time_utc, network_coherence, active_devices
+    """
+    # Try local CSV data first
+    csv_df = load_device_csv_data(device_id, start_ts, end_ts)
+
+    if not csv_df.empty:
+        csv_max_ts = csv_df["epoch_time_utc"].max()
+
+        # If CSV covers the full range, use it
+        if csv_max_ts >= end_ts - 60:
+            return csv_df
+
+        # CSV has partial data — fetch the rest from API
+        api_start = csv_max_ts + 1
+        api_df = load_device_api_data(int(device_id), api_start, end_ts)
+
+        if not api_df.empty:
+            combined = pd.concat([csv_df, api_df], ignore_index=True)
+            combined = combined.drop_duplicates(subset=["epoch_time_utc"], keep="last")
+            return combined.sort_values("epoch_time_utc").reset_index(drop=True)
+
+        return csv_df
+
+    # No local data — fetch entirely from API
+    api_df = load_device_api_data(int(device_id), start_ts, end_ts)
+    return api_df
+
+
 def get_available_clusters() -> list[dict]:
     """Get list of available clusters from both CSV and API.
 

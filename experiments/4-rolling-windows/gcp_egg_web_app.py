@@ -3,17 +3,13 @@ Dash web application to explore Global Consciousness Project (GCP) EGG data
 stored in BigQuery and reproduce Nelson-style statistical analysis.
 
 * Filtered egg list ({len(EGG_COLS_FILTERED)} columns, excludes {len(BROKEN_EGGS)} broken eggs)
-* Implements both Network Coherence methods (Plonka et al.):
-  NC (Phase) — classic Roger Nelson / GCP1 method:
+* Implements Network Coherence Phase method (Plonka et al.):
     1. Per RNG: Z = (output - μ) / σ
     2. Stouffer Z: s = ΣZ/√N
     3. NC = s² - 1
     4. Cumsum = Σ(NC)
-  NC (Amplitude) — Dispenza paper method:
-    1. Per RNG: Z = (output - μ) / σ
-    2. Per RNG: Z² - 1
-    3. NC = Σ(Z²-1)/√N
-    4. Cumsum = Σ(NC)
+  Note: NC (Amplitude) — Σ(Z²-1)/√N (Dispenza paper) requires raw per-RNG
+  data not currently available from GCP2 downloads or API.
 * Uses published expected values: μ=100, σ=7.0712
 * Handles missing egg data by dynamically adjusting N in Stouffer Z calculation
 * Excludes broken eggs with constant output (zero variance) that cause systematic bias
@@ -80,6 +76,7 @@ import sys
 sys.path.insert(0, str(GCP2_DATA_DIR))
 try:
     from gcp2_data_provider import get_cluster_coherence as _get_cluster_coherence
+    from gcp2_data_provider import get_device_coherence as _get_device_coherence
     GCP2_DATA_PROVIDER_AVAILABLE = True
 except ImportError:
     GCP2_DATA_PROVIDER_AVAILABLE = False
@@ -124,7 +121,13 @@ def get_gcp2_device_options():
 GCP2_DEVICES = get_gcp2_device_options()
 
 def get_gcp2_latest_date():
-    """Get the latest available GCP2 data date."""
+    """Get the latest available GCP2 data date.
+
+    With the API data provider, live data is always available beyond local CSVs.
+    """
+    if GCP2_DATA_PROVIDER_AVAILABLE:
+        return "present"
+
     global_network_dir = GCP2_NETWORK_DIR / "global_network"
     if not global_network_dir.exists():
         return "2024-present"
@@ -245,14 +248,6 @@ def build_sql(filter_broken_eggs: bool = True, use_pseudo_entropy: bool = False)
     # This is NC (Phase): square AFTER summing — classic Roger Nelson / GCP1 method
     chi2_stouffer = f"POW(SAFE_DIVIDE({stouffer_z_sum}, SQRT({null_count_block})), 2) - 1 AS chi2_stouffer"
 
-    # NC (Amplitude): square BEFORE summing — Dispenza paper method
-    # Per RNG: Z²-1, then Σ(Z²-1)/√N
-    amplitude_terms = []
-    for c in EGG_COLS_FILTERED:
-        amplitude_terms.append(f"IF(z_{c} IS NOT NULL, POW(z_{c}, 2) - 1, 0)")
-    amplitude_sum = " + ".join(amplitude_terms)
-    chi2_amplitude = f"SAFE_DIVIDE({amplitude_sum}, SQRT({null_count_block})) AS chi2_amplitude"
-
     return f"""
 DECLARE start_ts TIMESTAMP DEFAULT @start_ts;
 DECLARE window_s INT64     DEFAULT @window_s;
@@ -275,7 +270,6 @@ z AS (
 sec AS (
   SELECT recorded_at,
          {chi2_stouffer},
-         {chi2_amplitude},
          {stouffer_z},
          {null_count_block} AS active_eggs
   FROM z
@@ -284,13 +278,12 @@ bins AS (
   SELECT
     CAST(FLOOR(TIMESTAMP_DIFF(recorded_at, start_ts, SECOND)/sec_per_bin) AS INT64) AS bin_idx,
     SUM(chi2_stouffer) AS chi2_stouffer_sum,
-    SUM(chi2_amplitude) AS chi2_amplitude_sum,
     COUNT(*) AS seconds_in_bin,
     AVG(active_eggs) AS avg_active_eggs
   FROM sec
   GROUP BY bin_idx
 )
-SELECT bin_idx, chi2_stouffer_sum, chi2_amplitude_sum, seconds_in_bin, avg_active_eggs
+SELECT bin_idx, chi2_stouffer_sum, seconds_in_bin, avg_active_eggs
 FROM bins
 ORDER BY bin_idx;"""
 
@@ -417,7 +410,6 @@ def query_bq(start_ts: float, window_s: int, bins: int, filter_broken_eggs: bool
             .to_dataframe(bqstorage_client=bqs_client, create_bqstorage_client=True)
         )
         df["cum_stouffer_z"] = df["chi2_stouffer_sum"].cumsum()      # NC (Phase)
-        df["cum_amplitude"] = df["chi2_amplitude_sum"].cumsum()     # NC (Amplitude)
         CACHE.set(key, df, expire=3600)
 
     # Always print SQL and result for debugging and verification
@@ -555,15 +547,36 @@ def query_gcp2(start_ts: float, window_s: int, bins: int, network: str = "global
     is_device = network.startswith("device_")
 
     if is_device:
-        # Load individual device data from ZIP files
         device_id = network.replace("device_", "")
-        data = load_device_data(device_id, start_ts, end_ts)
-        if data.empty:
-            print(f"\n===== GCP2 Device Data =====")
-            print(f"No data found for Device {device_id} in range {_dt.fromtimestamp(start_ts, _tz.utc)} to {_dt.fromtimestamp(end_ts, _tz.utc)}")
-            print("============================\n")
-            return pd.DataFrame()
-        source_info = f"Device {device_id}"
+
+        # Use data provider (local ZIP + API fallback) if available
+        if GCP2_DATA_PROVIDER_AVAILABLE:
+            try:
+                data = _get_device_coherence(device_id, start_ts, end_ts)
+                if data.empty:
+                    print(f"\n===== GCP2 Device Data =====")
+                    print(f"No data found for Device {device_id} in range {_dt.fromtimestamp(start_ts, _tz.utc)} to {_dt.fromtimestamp(end_ts, _tz.utc)}")
+                    print("============================\n")
+                    return pd.DataFrame()
+                source_info = f"Device {device_id} (via data provider)"
+            except Exception as e:
+                print(f"Error loading device via provider: {e}, falling back to local ZIP")
+                data = load_device_data(device_id, start_ts, end_ts)
+                if data.empty:
+                    print(f"\n===== GCP2 Device Data =====")
+                    print(f"No data found for Device {device_id} in range {_dt.fromtimestamp(start_ts, _tz.utc)} to {_dt.fromtimestamp(end_ts, _tz.utc)}")
+                    print("============================\n")
+                    return pd.DataFrame()
+                source_info = f"Device {device_id} (local ZIP)"
+        else:
+            # Fallback to local ZIP only
+            data = load_device_data(device_id, start_ts, end_ts)
+            if data.empty:
+                print(f"\n===== GCP2 Device Data =====")
+                print(f"No data found for Device {device_id} in range {_dt.fromtimestamp(start_ts, _tz.utc)} to {_dt.fromtimestamp(end_ts, _tz.utc)}")
+                print("============================\n")
+                return pd.DataFrame()
+            source_info = f"Device {device_id} (local ZIP)"
     else:
         # Load network/cluster data via data provider (CSV + API hybrid)
         if GCP2_DATA_PROVIDER_AVAILABLE:
@@ -1010,8 +1023,8 @@ app.layout = html.Div([
                 dcc.Checklist(
                     id="data-source-select",
                     options=[
-                        {"label": f" GCP1 (BigQuery RNG Data 1998-{GCP1_LATEST_DATE})", "value": "gcp1"},
-                        {"label": f" GCP2 (Network Coherence Mar 2024-{GCP2_LATEST_DATE})", "value": "gcp2"},
+                        {"label": f" GCP1 Network Variance (computed from egg data, 1998-{GCP1_LATEST_DATE})", "value": "gcp1"},
+                        {"label": f" GCP2 Network Coherence (pre-computed, Mar 2024-{GCP2_LATEST_DATE})", "value": "gcp2"},
                     ],
                     value=["gcp1"],  # Default to GCP1 only
                     inline=True,
@@ -1027,7 +1040,7 @@ app.layout = html.Div([
 
             # NC Method selector (applies to both GCP1 and GCP2)
             html.Div([
-                html.Label("NC Method:", style={
+                html.Label("Plot Mode:", style={
                     "color": CYBERPUNK_COLORS['text_primary'],
                     "fontFamily": "'Courier New', monospace",
                     "fontSize": "13px",
@@ -1036,9 +1049,8 @@ app.layout = html.Div([
                 dcc.RadioItems(
                     id="gcp2-display-mode",
                     options=[
-                        {"label": " NC (Phase) — Stouffer Z then square: (ΣZ/√N)²−1", "value": "phase"},
-                        {"label": " NC (Amplitude) — square then average: Σ(Z²−1)/√N", "value": "amplitude"},
-                        {"label": " Raw NC — coherence values as-is (GCP2 only)", "value": "raw_nc"},
+                        {"label": " Cumulative Deviation — Network Variance (GCP1) / Network Coherence (GCP2)", "value": "phase"},
+                        {"label": " Raw Network Coherence — per-second values (GCP2 only)", "value": "raw_nc"},
                     ],
                     value="phase",
                     inline=True,
@@ -1919,12 +1931,8 @@ def create_egg_callback(app_instance):
 
         # Add GCP1 data trace if enabled and has data (skip in raw NC mode — GCP2 only)
         if has_gcp1_data and not is_raw_nc:
-            if nc_method == "amplitude":
-                y_gcp1 = df["cum_amplitude"]
-                gcp1_trace_name = "GCP1 NC (Amplitude)"
-            else:
-                y_gcp1 = df["cum_stouffer_z"]
-                gcp1_trace_name = "GCP1 NC (Phase)"
+            y_gcp1 = df["cum_stouffer_z"]
+            gcp1_trace_name = "GCP1 Cumulative Network Variance"
 
             fig.add_trace(go.Scatter(
                 x=x,
@@ -1943,14 +1951,11 @@ def create_egg_callback(app_instance):
             if is_raw_nc:
                 # Raw NC mode: plot per-bin mean network coherence as-is
                 y_gcp2 = df_gcp2["nc_mean"]
-                gcp2_trace_name = f"GCP2 Raw NC ({gcp2_network})"
+                gcp2_trace_name = f"GCP2 Raw Network Coherence ({gcp2_network})"
             else:
-                # Cumulative modes: plot cumsum of NC (Phase from CSV)
+                # Cumulative NC (Phase) from pre-computed CSV/API data
                 y_gcp2 = df_gcp2["cum_nc"]
-                if nc_method == "amplitude":
-                    gcp2_trace_name = f"GCP2 NC Phase* ({gcp2_network})"
-                else:
-                    gcp2_trace_name = f"GCP2 NC Phase ({gcp2_network})"
+                gcp2_trace_name = f"GCP2 Cumulative Network Coherence ({gcp2_network})"
 
             fig.add_trace(go.Scatter(
                 x=x_gcp2,
@@ -1978,7 +1983,7 @@ def create_egg_callback(app_instance):
                 # Calculate x-axis values for pseudo data (same as real data)
                 x_pseudo = df_pseudo["bin_idx"] * seconds_per_bin / conversion_factor
 
-                y_pseudo = df_pseudo["cum_amplitude"] if nc_method == "amplitude" else df_pseudo["cum_stouffer_z"]
+                y_pseudo = df_pseudo["cum_stouffer_z"]
                 fig.add_trace(go.Scatter(
                     x=x_pseudo,
                     y=y_pseudo,
@@ -2035,15 +2040,14 @@ def create_egg_callback(app_instance):
         # Create comprehensive title
         pseudo_status = " | PSEUDO ENTROPY: ON" if use_pseudo_entropy else ""
         parabolic_status = " | Parabolic: ON" if show_parabolic_curve_enabled else ""
-        nc_method_label = "Raw NC" if is_raw_nc else ("Phase" if nc_method == "phase" else "Amplitude")
-        nc_method_str = f" | NC: {nc_method_label}"
-        gcp2_amp_note = " (GCP2: Phase only*)" if nc_method == "amplitude" and has_gcp2_data else ""
+        nc_method_label = "Raw Network Coherence" if is_raw_nc else "Cumulative Deviation"
+        nc_method_str = f" | Mode: {nc_method_label}"
         title_text = f"""
         <b>GCP RNG Statistical Analysis</b><br>
         <span style='font-size: 14px; color: {CYBERPUNK_COLORS['neon_cyan']};'>
         Date: {selected_date.strftime('%Y-%m-%d')} | Time: {selected_time.strftime('%H:%M:%S')} UTC<br>
         Window: {window_len_str} ({window_len:,}s) | Bins: {bins} (≈{bin_duration_str}/bin)<br>
-        {sources_str}{nc_method_str}{gcp2_amp_note}{pseudo_status}{parabolic_status}
+        {sources_str}{nc_method_str}{pseudo_status}{parabolic_status}
         </span>
         """
         
