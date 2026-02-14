@@ -3,10 +3,17 @@ Dash web application to explore Global Consciousness Project (GCP) EGG data
 stored in BigQuery and reproduce Nelson-style statistical analysis.
 
 * Filtered egg list ({len(EGG_COLS_FILTERED)} columns, excludes {len(BROKEN_EGGS)} broken eggs)
-* Implements correct GCP methodology:
-  1. Stouffer Z across eggs: Z_t(s) = ΣZ_i/√N (dynamic N based on active eggs)
-  2. χ² based on Stouffer Z: (Z_t(s))² (distributed as χ²(1) under null hypothesis)
-  3. Cumulative deviation: Σ((Z_t(s))² - 1) to detect departure from randomness
+* Implements both Network Coherence methods (Plonka et al.):
+  NC (Phase) — classic Roger Nelson / GCP1 method:
+    1. Per RNG: Z = (output - μ) / σ
+    2. Stouffer Z: s = ΣZ/√N
+    3. NC = s² - 1
+    4. Cumsum = Σ(NC)
+  NC (Amplitude) — Dispenza paper method:
+    1. Per RNG: Z = (output - μ) / σ
+    2. Per RNG: Z² - 1
+    3. NC = Σ(Z²-1)/√N
+    4. Cumsum = Σ(NC)
 * Uses published expected values: μ=100, σ=7.0712
 * Handles missing egg data by dynamically adjusting N in Stouffer Z calculation
 * Excludes broken eggs with constant output (zero variance) that cause systematic bias
@@ -78,8 +85,6 @@ except ImportError:
     GCP2_DATA_PROVIDER_AVAILABLE = False
     print("Warning: gcp2_data_provider not available, falling back to CSV-only mode")
 GCP2_DATE_MIN = _dt(2024, 3, 1, tzinfo=_tz.utc).date()
-ROLLING_WINDOW_SECONDS = 3600  # 1 hour for rolling Z-score
-MIN_ROLLING_PERIODS = 360      # 6 minutes minimum
 
 # GCP2 network options (folder_name, display_name)
 GCP2_NETWORKS = [
@@ -237,7 +242,16 @@ def build_sql(filter_broken_eggs: bool = True, use_pseudo_entropy: bool = False)
     stouffer_z = f"SAFE_DIVIDE({stouffer_z_sum}, SQRT({null_count_block})) AS stouffer_z"
     
     # Calculate χ² based on Stouffer Z: (Stouffer Z)² - 1 (deviation from null hypothesis)
+    # This is NC (Phase): square AFTER summing — classic Roger Nelson / GCP1 method
     chi2_stouffer = f"POW(SAFE_DIVIDE({stouffer_z_sum}, SQRT({null_count_block})), 2) - 1 AS chi2_stouffer"
+
+    # NC (Amplitude): square BEFORE summing — Dispenza paper method
+    # Per RNG: Z²-1, then Σ(Z²-1)/√N
+    amplitude_terms = []
+    for c in EGG_COLS_FILTERED:
+        amplitude_terms.append(f"IF(z_{c} IS NOT NULL, POW(z_{c}, 2) - 1, 0)")
+    amplitude_sum = " + ".join(amplitude_terms)
+    chi2_amplitude = f"SAFE_DIVIDE({amplitude_sum}, SQRT({null_count_block})) AS chi2_amplitude"
 
     return f"""
 DECLARE start_ts TIMESTAMP DEFAULT @start_ts;
@@ -259,8 +273,9 @@ z AS (
   FROM raw
 ),
 sec AS (
-  SELECT recorded_at, 
+  SELECT recorded_at,
          {chi2_stouffer},
+         {chi2_amplitude},
          {stouffer_z},
          {null_count_block} AS active_eggs
   FROM z
@@ -269,12 +284,13 @@ bins AS (
   SELECT
     CAST(FLOOR(TIMESTAMP_DIFF(recorded_at, start_ts, SECOND)/sec_per_bin) AS INT64) AS bin_idx,
     SUM(chi2_stouffer) AS chi2_stouffer_sum,
+    SUM(chi2_amplitude) AS chi2_amplitude_sum,
     COUNT(*) AS seconds_in_bin,
     AVG(active_eggs) AS avg_active_eggs
   FROM sec
   GROUP BY bin_idx
 )
-SELECT bin_idx, chi2_stouffer_sum, seconds_in_bin, avg_active_eggs
+SELECT bin_idx, chi2_stouffer_sum, chi2_amplitude_sum, seconds_in_bin, avg_active_eggs
 FROM bins
 ORDER BY bin_idx;"""
 
@@ -400,7 +416,8 @@ def query_bq(start_ts: float, window_s: int, bins: int, filter_broken_eggs: bool
             bq_client.query(sql, job_config=cfg)
             .to_dataframe(bqstorage_client=bqs_client, create_bqstorage_client=True)
         )
-        df["cum_stouffer_z"] = df["chi2_stouffer_sum"].cumsum()
+        df["cum_stouffer_z"] = df["chi2_stouffer_sum"].cumsum()      # NC (Phase)
+        df["cum_amplitude"] = df["chi2_amplitude_sum"].cumsum()     # NC (Amplitude)
         CACHE.set(key, df, expire=3600)
 
     # Always print SQL and result for debugging and verification
@@ -514,14 +531,15 @@ def load_device_data(device_id: str, start_ts: float, end_ts: float) -> pd.DataF
 def query_gcp2(start_ts: float, window_s: int, bins: int, network: str = "global_network") -> pd.DataFrame:
     """Query GCP2 network coherence data for the specified time window.
 
+    The downloaded CSV data contains pre-computed NC (Phase) values from gcp2.net.
+    NC (Amplitude) is not available from the CSV downloads as it requires raw per-RNG data.
+
     Returns DataFrame with columns:
         - bin_idx: Bin index
-        - chi2_rolling_z_sum: Sum of (rolling_z)^2 - 1 in bin
-        - nc_sum: Sum of network_coherence in bin
+        - nc_sum: Sum of network_coherence (Phase) in bin
         - seconds_in_bin: Count of seconds in bin
         - avg_active_devices: Average active devices
-        - cum_rolling_z: Cumulative sum of (rolling_z)^2 - 1
-        - cum_nc: Cumulative sum of network_coherence
+        - cum_nc: Cumulative sum of network_coherence (Phase)
     """
     cache_key = ("gcp2", start_ts, window_s, bins, network)
     cached = CACHE.get(cache_key)
@@ -600,14 +618,6 @@ def query_gcp2(start_ts: float, window_s: int, bins: int, network: str = "global
 
             source_info = f"{network}, Files: {len(csv_files)}"
 
-    # Compute rolling Z-score of network_coherence
-    nc = data["network_coherence"]
-    roll = nc.rolling(ROLLING_WINDOW_SECONDS, min_periods=MIN_ROLLING_PERIODS)
-    data["rolling_z"] = (nc - roll.mean()) / (roll.std(ddof=0) + 1e-9)
-
-    # Compute chi-square style deviation: (rolling_z)^2 - 1
-    data["chi2_rolling_z"] = data["rolling_z"] ** 2 - 1
-
     # Bin the data
     seconds_per_bin = max(1, window_s // bins)
     data["bin_idx"] = ((data["epoch_time_utc"] - start_ts) // seconds_per_bin).astype(int)
@@ -615,14 +625,12 @@ def query_gcp2(start_ts: float, window_s: int, bins: int, network: str = "global
     # Aggregate by bin
     binned = data.groupby("bin_idx").agg(
         nc_sum=("network_coherence", "sum"),
-        chi2_rolling_z_sum=("chi2_rolling_z", lambda x: x.dropna().sum()),
         seconds_in_bin=("network_coherence", "count"),
         avg_active_devices=("active_devices", "mean"),
     ).reset_index()
 
-    # Compute cumulative sums
+    # Compute cumulative sum — NC (Phase) from pre-computed CSV data
     binned["cum_nc"] = binned["nc_sum"].cumsum()
-    binned["cum_rolling_z"] = binned["chi2_rolling_z_sum"].cumsum()
 
     print(f"\n===== GCP2 Data =====")
     print(f"Source: {source_info}, Rows: {len(binned)}")
@@ -1016,6 +1024,32 @@ app.layout = html.Div([
                 ),
             ], style={"marginBottom": "15px"}),
 
+            # NC Method selector (applies to both GCP1 and GCP2)
+            html.Div([
+                html.Label("NC Method:", style={
+                    "color": CYBERPUNK_COLORS['text_primary'],
+                    "fontFamily": "'Courier New', monospace",
+                    "fontSize": "13px",
+                    "marginRight": "10px"
+                }),
+                dcc.RadioItems(
+                    id="gcp2-display-mode",
+                    options=[
+                        {"label": " NC (Phase) — Stouffer Z then square: (ΣZ/√N)²−1", "value": "phase"},
+                        {"label": " NC (Amplitude) — square then average: Σ(Z²−1)/√N", "value": "amplitude"},
+                    ],
+                    value="phase",
+                    inline=True,
+                    style={
+                        "color": CYBERPUNK_COLORS['text_primary'],
+                        "fontFamily": "'Courier New', monospace",
+                        "fontSize": "13px"
+                    },
+                    inputStyle={"marginRight": "5px"},
+                    labelStyle={"marginRight": "15px"}
+                ),
+            ], style={"display": "flex", "alignItems": "center", "marginBottom": "15px"}),
+
             # GCP2 Options (conditionally visible)
             html.Div(id="gcp2-options-container", children=[
                 html.Div([
@@ -1045,31 +1079,6 @@ app.layout = html.Div([
                         }
                     ),
                 ], style={"display": "flex", "alignItems": "center", "marginRight": "30px"}),
-
-                html.Div([
-                    html.Label("Display Mode:", style={
-                        "color": CYBERPUNK_COLORS['text_primary'],
-                        "fontFamily": "'Courier New', monospace",
-                        "fontSize": "13px",
-                        "marginRight": "10px"
-                    }),
-                    dcc.RadioItems(
-                        id="gcp2-display-mode",
-                        options=[
-                            {"label": " Cumsum Σ(nc) — GCP1-comparable", "value": "raw"},
-                            {"label": " Rolling Z Σ(z²-1) — experimental", "value": "rolling_z"},
-                        ],
-                        value="raw",
-                        inline=True,
-                        style={
-                            "color": CYBERPUNK_COLORS['text_primary'],
-                            "fontFamily": "'Courier New', monospace",
-                            "fontSize": "13px"
-                        },
-                        inputStyle={"marginRight": "5px"},
-                        labelStyle={"marginRight": "15px"}
-                    ),
-                ], style={"display": "flex", "alignItems": "center"}),
             ], style={"display": "none", "flexWrap": "wrap", "gap": "10px"}),
 
             # Date range warning for GCP2
@@ -1902,13 +1911,23 @@ def create_egg_callback(app_instance):
                 showlegend=True
             ))
 
+        # Determine NC method from radio selection
+        nc_method = gcp2_display_mode or "phase"
+
         # Add GCP1 data trace if enabled and has data
         if has_gcp1_data:
+            if nc_method == "amplitude":
+                y_gcp1 = df["cum_amplitude"]
+                gcp1_trace_name = "GCP1 NC (Amplitude)"
+            else:
+                y_gcp1 = df["cum_stouffer_z"]
+                gcp1_trace_name = "GCP1 NC (Phase)"
+
             fig.add_trace(go.Scatter(
                 x=x,
-                y=df["cum_stouffer_z"],
+                y=y_gcp1,
                 mode="lines",
-                name="GCP1 χ² (Stouffer Z)",
+                name=gcp1_trace_name,
                 line=dict(
                     color=CYBERPUNK_COLORS['neon_purple'],
                     width=3,
@@ -1918,13 +1937,12 @@ def create_egg_callback(app_instance):
 
         # Add GCP2 data trace if enabled and has data
         if has_gcp2_data:
-            gcp2_mode = gcp2_display_mode or "rolling_z"
-            if gcp2_mode == "rolling_z":
-                y_gcp2 = df_gcp2["cum_rolling_z"]
-                gcp2_trace_name = f"GCP2 χ² Rolling-Z ({gcp2_network})"
+            # GCP2 CSV data only contains NC (Phase) — pre-computed on gcp2.net
+            y_gcp2 = df_gcp2["cum_nc"]
+            if nc_method == "amplitude":
+                gcp2_trace_name = f"GCP2 NC Phase* ({gcp2_network})"
             else:
-                y_gcp2 = df_gcp2["cum_nc"]
-                gcp2_trace_name = f"GCP2 Raw Cumsum ({gcp2_network})"
+                gcp2_trace_name = f"GCP2 NC Phase ({gcp2_network})"
 
             fig.add_trace(go.Scatter(
                 x=x_gcp2,
@@ -1952,9 +1970,10 @@ def create_egg_callback(app_instance):
                 # Calculate x-axis values for pseudo data (same as real data)
                 x_pseudo = df_pseudo["bin_idx"] * seconds_per_bin / conversion_factor
 
+                y_pseudo = df_pseudo["cum_amplitude"] if nc_method == "amplitude" else df_pseudo["cum_stouffer_z"]
                 fig.add_trace(go.Scatter(
                     x=x_pseudo,
-                    y=df_pseudo["cum_stouffer_z"],
+                    y=y_pseudo,
                     mode="lines",
                     name="GCP1 Pseudo Entropy (random)",
                     line=dict(
@@ -2008,13 +2027,15 @@ def create_egg_callback(app_instance):
         # Create comprehensive title
         pseudo_status = " | PSEUDO ENTROPY: ON" if use_pseudo_entropy else ""
         parabolic_status = " | Parabolic: ON" if show_parabolic_curve_enabled else ""
-        gcp2_mode_str = f" | Mode: {gcp2_display_mode}" if has_gcp2_data else ""
+        nc_method_label = "Phase" if nc_method == "phase" else "Amplitude"
+        nc_method_str = f" | NC: {nc_method_label}"
+        gcp2_amp_note = " (GCP2: Phase only*)" if nc_method == "amplitude" and has_gcp2_data else ""
         title_text = f"""
         <b>GCP RNG Statistical Analysis</b><br>
         <span style='font-size: 14px; color: {CYBERPUNK_COLORS['neon_cyan']};'>
         Date: {selected_date.strftime('%Y-%m-%d')} | Time: {selected_time.strftime('%H:%M:%S')} UTC<br>
         Window: {window_len_str} ({window_len:,}s) | Bins: {bins} (≈{bin_duration_str}/bin)<br>
-        {sources_str}{gcp2_mode_str}{pseudo_status}{parabolic_status}
+        {sources_str}{nc_method_str}{gcp2_amp_note}{pseudo_status}{parabolic_status}
         </span>
         """
         
