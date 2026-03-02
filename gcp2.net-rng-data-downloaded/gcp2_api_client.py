@@ -289,7 +289,6 @@ CLUSTER_NAME_TO_FOLDER = {
     "Cluster São Paulo": "cluster_são_paulo",
     "Cluster Tel-Aviv": "cluster_tel_aviv",
     "Research Tower HMI N10A": "research_tower_hmi_n10a",
-    "Research Tower Dispenza N10A": "research_tower_dispenza_n10a",
 }
 
 # Reverse mapping

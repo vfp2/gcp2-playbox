@@ -35,7 +35,7 @@ from pathlib import Path
 
 BASE_URL = "https://gcp2.net/data-results/data-download"
 LOGIN_URL = "https://gcp2.net/login"
-OUTPUT_DIR = Path("/tmp/gcp2_data")
+OUTPUT_DIR = Path(__file__).resolve().parent
 PROGRESS_FILE = OUTPUT_DIR / "progress.json"
 
 # Discovered form field names (from probe)
