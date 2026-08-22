@@ -226,3 +226,10 @@ experiments/7-financial-backtesting/parquet_out/
 # GCP2 bulk downloaded data (GB of ZIP files - stored on Google Drive instead)
 gcp2.net-rng-data-downloaded/devices/
 gcp2.net-rng-data-downloaded/network/
+gcp2.net-rng-data-downloaded/probe/
+gcp2.net-rng-data-downloaded.zip
+
+# GCP1 BigQuery -> Parquet export (~34 GB of data; scripts are tracked, data is not)
+gcp1-bigquery-export/data/
+gcp1-bigquery-export/logs/
+gcp1-bigquery-export/manifest.json
