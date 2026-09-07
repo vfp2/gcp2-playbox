@@ -2144,4 +2144,5 @@ if __name__ == "__main__":
     # Register callbacks for standalone app
     create_url_callback(app)
     create_egg_callback(app)
-    app.run(debug=True, host="0.0.0.0", port=8051)
+    # GCP_EGG_PORT lets the deployment pick a port; 8051 is the historical default.
+    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("GCP_EGG_PORT", "8051")))
